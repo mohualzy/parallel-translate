@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>E2E Fixture</title>
+    <style>
+      body { font-size: 16px; line-height: 1.5; max-width: 720px; margin: 20px auto; }
+      .a11y-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+    </style>
+  </head>
+  <body>
+    <nav style="display: flex; gap: 12px"><a href="#" id="nav-home">Home</a><a href="#" id="nav-pricing">Pricing</a></nav>
+    <h1 id="title">Getting Started</h1>
+    <p id="p-sr">Visible sentence here<span class="a11y-text"> hidden helper text</span>.</p>
+    <p id="p-link">Read <a href="/docs" id="docs-link">the documentation</a> before running <code>npm install</code>.</p>
+    <p id="p-zh">这是一段中文，不应该被翻译。</p>
+    <ul>
+      <li id="li-parent">Parent item<ul><li id="li-child">Child item text</li></ul></li>
+    </ul>
+    <pre id="code-block">const answer = 42;</pre>
+    <p id="p-second">The quick brown fox jumps over the lazy dog.</p>
+    <div style="height: 4000px"></div>
+    <p id="p-far">This paragraph is far below the fold.</p>
+    <div id="dynamic"></div>
+  </body>
+</html>
