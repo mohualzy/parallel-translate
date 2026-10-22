@@ -139,6 +139,7 @@
             </div>
             <label class="check"><input type="checkbox" data-setting="richText" /> 译文保留链接、加粗、行内代码等格式</label>
             <label class="check"><input type="checkbox" data-setting="skipShortUI" /> 跳过按钮、标签页、导航链接等短界面文字（推荐，避免撑乱页面布局；悬停翻译不受影响）</label>
+            <label class="check"><input type="checkbox" data-setting="floatBall" /> 在页面右侧显示悬浮球（点击翻译，可上下拖动）</label>
             <label class="check"><input type="checkbox" data-setting="autoTranslateForeign" /> 打开外文页面时自动翻译（会产生 API 费用）</label>
             <div class="grid-2">
               <label class="field">
@@ -168,6 +169,10 @@
                 <textarea data-setting="neverTranslateSites" data-list rows="5" placeholder="mail.google.com"></textarea>
               </label>
             </div>
+            <label class="field">
+              <span>不显示悬浮球的网站</span>
+              <textarea data-setting="floatBallHiddenSites" data-list rows="3" placeholder="example.com"></textarea>
+            </label>
             <label class="field">
               <span>不翻译的区域（CSS 选择器，每行一个）</span>
               <textarea data-setting="excludeSelectors" data-list rows="3" placeholder=".comment-author&#10;#sidebar"></textarea>

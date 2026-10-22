@@ -15,6 +15,11 @@ export interface Settings {
   translationStyle: TranslationStyle;
   hoverKey: HoverKey;
   selectionMode: SelectionMode;
+  /** 页面右侧的悬浮球 */
+  floatBall: boolean;
+  /** 悬浮球纵向位置（占视口高度的比例 0~1），所有网站共用 */
+  floatBallTop: number;
+  floatBallHiddenSites: string[];
   /** 译文中保留链接、加粗、行内代码 */
   richText: boolean;
   /** 不自动翻译按钮、标签页、导航链接等短界面文字 */
@@ -54,6 +59,9 @@ export const DEFAULT_SETTINGS: Settings = {
   translationStyle: 'none',
   hoverKey: 'Control',
   selectionMode: 'icon',
+  floatBall: true,
+  floatBallTop: 0.6,
+  floatBallHiddenSites: [],
   richText: true,
   skipShortUI: true,
   autoTranslateForeign: false,

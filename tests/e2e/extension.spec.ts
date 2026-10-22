@@ -379,6 +379,43 @@ test('划词翻译：单词走词典模式并带上段落语境；中文选区�
   await page.close();
 });
 
+async function storedSettings(): Promise<Record<string, unknown>> {
+  return sw.evaluate(async () => (await chrome.storage.local.get('settings')).settings as Record<string, unknown>);
+}
+
+test('悬浮球：点击切换整页翻译并与快捷键同步；拖动不触发翻译且记住位置；可在当前网站隐藏', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  const ball = page.locator('ptx-ui-float-ball .ball');
+  await expect(ball).toBeVisible();
+  await expect(ball).toHaveAttribute('aria-pressed', 'false');
+
+  await ball.click();
+  await expect(translation(page, '#title')).toBeVisible();
+  await expect(ball).toHaveAttribute('aria-pressed', 'true');
+  await toggle(page); // 快捷键 / 弹窗关闭翻译后，悬浮球状态同步
+  await expect(page.locator('ptx-t')).toHaveCount(0);
+  await expect(ball).toHaveAttribute('aria-pressed', 'false');
+
+  const box = (await ball.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y - 150, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  await expect(page.locator('ptx-t')).toHaveCount(0);
+  expect(Number((await storedSettings()).floatBallTop)).toBeLessThan(0.6);
+
+  await page.locator('ptx-ui-float-ball .dock').hover();
+  await page.locator('ptx-ui-float-ball .hide').click();
+  await expect(ball).toHaveCount(0);
+  expect((await storedSettings()).floatBallHiddenSites).toEqual(['127.0.0.1']);
+
+  await setSettings({ floatBallHiddenSites: [], floatBallTop: 0.6 });
+  await expect(ball).toBeVisible();
+  await page.close();
+});
+
 test('设置页：显示已配置服务，测试连接与获取模型列表可用', async () => {
   const page = await context.newPage();
   const errors: string[] = [];

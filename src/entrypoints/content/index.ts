@@ -1,6 +1,7 @@
 import './style.css';
 import { browser } from 'wxt/browser';
 import { defineContentScript } from 'wxt/utils/define-content-script';
+import { FloatBall } from '@/content/float-ball';
 import { setupHoverTrigger } from '@/content/hover';
 import { SelectionTranslator } from '@/content/selection';
 import { PageTranslator } from '@/content/translator';
@@ -26,7 +27,12 @@ export default defineContentScript({
   async main(ctx) {
     const settings = await getSettings();
     const translator = new PageTranslator(settings);
-    onSettingsChanged((next) => translator.updateSettings(next));
+    const floatBall = new FloatBall(ctx, translator);
+    void floatBall.sync(settings);
+    onSettingsChanged((next) => {
+      translator.updateSettings(next);
+      void floatBall.sync(next);
+    });
     setupHoverTrigger(
       () => translator.settings.hoverKey,
       (target, x, y) => translator.translateAt(target, x, y),

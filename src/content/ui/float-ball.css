@@ -1,0 +1,75 @@
+[hidden] {
+  display: none !important;
+}
+
+.dock {
+  position: fixed;
+  right: 0;
+  z-index: 2147483646;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  transform: translateY(-50%);
+  font: 12px/1.4 var(--ptx-font);
+}
+
+.ball {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 36px;
+  padding: 0 4px 0 0;
+  border: 1px solid var(--ptx-border);
+  border-right: 0;
+  border-radius: 18px 0 0 18px;
+  background: var(--ptx-bg);
+  color: var(--ptx-accent);
+  box-shadow: var(--ptx-shadow);
+  opacity: 0.55;
+  transform: translateX(10px);
+  transition: opacity 0.15s, transform 0.15s, background 0.15s;
+  touch-action: none;
+  user-select: none;
+}
+
+.ball[aria-pressed='true'] {
+  border-color: var(--ptx-accent);
+  background: var(--ptx-accent);
+  color: var(--ptx-on-accent);
+}
+
+.dock:hover .ball,
+.dock.dragging .ball {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.dock.dragging .ball {
+  cursor: grabbing;
+}
+
+.ball svg {
+  width: 18px;
+  height: 18px;
+}
+
+.hide {
+  visibility: hidden;
+  padding: 1px 8px;
+  border: 1px solid var(--ptx-border);
+  border-radius: 10px;
+  background: var(--ptx-bg);
+  color: var(--ptx-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  box-shadow: var(--ptx-shadow);
+}
+
+.dock:hover .hide {
+  visibility: visible;
+}
+
+.hide:hover {
+  color: var(--ptx-text);
+}

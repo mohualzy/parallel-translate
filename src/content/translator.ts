@@ -44,6 +44,8 @@ export class PageTranslator {
   enabled = false;
   pageLang = '';
 
+  private enabledListeners = new Set<(enabled: boolean) => void>();
+
   private classifier: DomClassifier;
   private paragraphs = new Set<Paragraph>();
   private byNode = new WeakMap<Node, Paragraph>();
@@ -73,6 +75,12 @@ export class PageTranslator {
 
   // ---------- 对外接口 ----------
 
+  /** 订阅「整页翻译开/关」变化（悬浮球等 UI 据此同步状态），返回取消订阅函数 */
+  onEnabledChange(listener: (enabled: boolean) => void): () => void {
+    this.enabledListeners.add(listener);
+    return () => this.enabledListeners.delete(listener);
+  }
+
   enable() {
     if (this.enabled || !document.body) return;
     this.enabled = true;
@@ -80,6 +88,7 @@ export class PageTranslator {
     this.mo = new MutationObserver((records) => this.onMutations(records));
     this.mo.observe(document.body, { childList: true, subtree: true, characterData: true });
     this.scan([document.body]);
+    this.emitEnabled();
   }
 
   disable() {
@@ -237,9 +246,15 @@ export class PageTranslator {
     }
   }
 
+  private emitEnabled() {
+    for (const listener of this.enabledListeners) listener(this.enabled);
+  }
+
   private reset() {
+    const wasEnabled = this.enabled;
     this.generation++;
     this.enabled = false;
+    if (wasEnabled) queueMicrotask(() => this.emitEnabled());
     this.io?.disconnect();
     this.mo?.disconnect();
     this.io = this.mo = undefined;
