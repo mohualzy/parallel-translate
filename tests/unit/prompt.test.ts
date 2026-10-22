@@ -19,6 +19,13 @@ describe('buildMessages', () => {
     expect(user?.content).toContain('<s id="0">Hello</s>\n<s id="1">World</s>');
   });
 
+  it('页面摘要与标题一起作为上下文放在分段前面', () => {
+    const [, user] = buildMessages(['Hi'], { targetLang: 'zh-CN', title: 'T', summary: 'About cats.' });
+    expect(user?.content).toBe('网页标题（仅供参考，不要翻译）：T\n网页摘要（仅供参考，不要翻译）：About cats.\n\n<s id="0">Hi</s>');
+    const [, onlyBody] = buildMessages(['Hi'], { targetLang: 'en' });
+    expect(onlyBody?.content).toBe('<s id="0">Hi</s>');
+  });
+
   it('其他目标语言用英文 prompt', () => {
     const [system, user] = buildMessages(['Hallo'], { targetLang: 'en', title: 'Seite' });
     expect(system?.content).toContain('native English translator');

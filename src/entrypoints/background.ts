@@ -17,7 +17,7 @@ const MENU_TOGGLE = 'ptx-toggle';
 async function handle(request: BackgroundRequest): Promise<BackgroundResponses[BackgroundRequest['type']]> {
   switch (request.type) {
     case 'translate':
-      return translateSegments(request.segments, request.title);
+      return translateSegments(request.segments, request.page);
     case 'test-provider':
       return testProvider(request.provider);
     case 'list-models':

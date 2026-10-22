@@ -11,8 +11,9 @@ export interface MockServer {
   url: string;
   /** 每次 chat/completions 请求收到的段落 */
   batches: string[][];
-  /** 与 batches 一一对应的 system prompt */
+  /** 与 batches 一一对应的 system prompt 与 user 消息 */
   systems: string[];
+  users: string[];
   /** 非空时下一批请求都返回该状态码 */
   failWith: number | null;
   /** 划词翻译请求：选中文本、是否词典模式、带上的语境 */
@@ -38,7 +39,7 @@ function extractSegments(content: string): string[] {
 }
 
 export async function startMockServer(): Promise<MockServer> {
-  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], systems: [], selections: [], failWith: null, dropWhen: null };
+  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], systems: [], users: [], selections: [], failWith: null, dropWhen: null };
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -80,6 +81,7 @@ export async function startMockServer(): Promise<MockServer> {
       } else {
         state.batches.push(segments);
         state.systems.push(body.messages[0].content as string);
+        state.users.push(user);
       }
       const output = selected !== undefined ? `${PREFIX}${selected}` : segments
         .map((s, i) => (segments.length > 1 && state.dropWhen?.(s) ? '' : `<s id="${i}">${PREFIX}${s}</s>`))

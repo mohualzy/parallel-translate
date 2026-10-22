@@ -112,6 +112,9 @@ test('整页翻译：段落出现译文，链接与行内代码保留，中文�
 
   // 多段合并成一次请求
   expect(server.batches.some((b) => b.length > 1)).toBe(true);
+  // 页面标题与摘要作为上下文随请求发送
+  expect(server.users.at(-1)).toContain('网页标题（仅供参考，不要翻译）：E2E Fixture');
+  expect(server.users.at(-1)).toContain('网页摘要（仅供参考，不要翻译）：A fixture page about getting started with the extension.');
   await page.close();
 });
 

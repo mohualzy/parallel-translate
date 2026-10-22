@@ -2,7 +2,7 @@ import { browser } from 'wxt/browser';
 import { Semaphore, withRetry } from '@/lib/async';
 import { translateBatch } from '@/lib/batch';
 import { matchGlossary, parseGlossary, type GlossaryEntry } from '@/lib/glossary';
-import type { SelectionRequest, TranslateResult } from '@/lib/messages';
+import type { PageContext, SelectionRequest, TranslateResult } from '@/lib/messages';
 import { buildMessages, createClient, HttpError, parseSegments, PROMPT_VERSION, type ChatMessage } from '@/lib/providers';
 import { buildSelectionMessages, SELECTION_PROMPT_VERSION, stripReasoning } from '@/lib/providers/prompt';
 import { getActiveProvider, getSettings, type ProviderConfig, type Settings } from '@/lib/settings';
@@ -78,7 +78,7 @@ async function requireProvider(): Promise<ProviderConfig> {
  * 翻译一批段落：先查缓存，未命中的合并成一次请求；
  * 模型漏掉的段在预算内二分补翻；仍失败的段返回 null 并附带原因。
  */
-export async function translateSegments(segments: string[], title: string): Promise<TranslateResult> {
+export async function translateSegments(segments: string[], page: PageContext): Promise<TranslateResult> {
   const [settings, provider] = await Promise.all([getSettings(), requireProvider()]);
   const glossary = parseGlossary(settings.glossary);
   const keys = await Promise.all(segments.map((s) => cacheKey(provider, settings, s, glossary)));
@@ -87,7 +87,7 @@ export async function translateSegments(segments: string[], title: string): Prom
   const missing = translations.flatMap((t, i) => (t === null ? [i] : []));
   if (missing.length === 0) return { translations };
 
-  const prompt = { targetLang: settings.targetLang, stylePrompt: provider.prompt, title };
+  const prompt = { targetLang: settings.targetLang, stylePrompt: provider.prompt, title: page.title, summary: page.summary };
   const outcome = await translateBatch(
     missing.map((i) => segments[i]!),
     // 术语按实际发送的这一批匹配（补翻拆分后的小批次也只带自己用到的术语）

@@ -3,8 +3,15 @@ import type { ProviderConfig } from './settings';
 
 // ---------- 页面 / 设置页 → background ----------
 
+/** 随翻译请求附带的页面上下文，帮助模型判断领域、消歧（不计入缓存键，同一段文字跨页面复用缓存） */
+export interface PageContext {
+  title: string;
+  /** meta description / og:description，最多 300 字 */
+  summary: string;
+}
+
 export type BackgroundRequest =
-  | { type: 'translate'; segments: string[]; title: string }
+  | { type: 'translate'; segments: string[]; page: PageContext }
   | { type: 'test-provider'; provider: ProviderConfig }
   | { type: 'list-models'; provider: ProviderConfig }
   | { type: 'clear-cache' }

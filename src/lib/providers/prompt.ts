@@ -22,6 +22,8 @@ export interface PromptOptions {
   stylePrompt?: string;
   /** 页面标题，作为领域上下文帮助消歧 */
   title?: string;
+  /** 页面摘要（meta description），同样只作上下文 */
+  summary?: string;
   /** 本批命中的用户术语 */
   glossary?: GlossaryEntry[];
 }
@@ -83,10 +85,14 @@ export function buildMessages(segments: string[], opts: PromptOptions): ChatMess
 
   const body = segments.map((s, i) => `<s id="${i}">${s}</s>`).join('\n');
   const title = opts.title?.trim();
-  const titleLine = zh ? `网页标题（仅供参考，不要翻译）：${title}` : `Page title (context only, do not translate): ${title}`;
+  const summary = opts.summary?.trim();
+  const contextLines = [
+    title && (zh ? `网页标题（仅供参考，不要翻译）：${title}` : `Page title (context only, do not translate): ${title}`),
+    summary && (zh ? `网页摘要（仅供参考，不要翻译）：${summary}` : `Page summary (context only, do not translate): ${summary}`),
+  ].filter(Boolean);
   return [
     { role: 'system', content: system },
-    { role: 'user', content: title ? `${titleLine}\n\n${body}` : body },
+    { role: 'user', content: contextLines.length ? `${contextLines.join('\n')}\n\n${body}` : body },
   ];
 }
 

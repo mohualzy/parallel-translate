@@ -3,6 +3,7 @@ import { sendToBackground, type TabState } from '@/lib/messages';
 import type { Settings } from '@/lib/settings';
 import { collectRuns, runContainsPoint, type Run } from './collect';
 import { buildExcludeSelector, CONTENT_CONTAINERS, DomClassifier, looksLikeUIChrome, OWN_TAG } from './dom';
+import { pageContext } from './page-context';
 import { deserialize, serialize } from './richtext';
 
 type State = 'idle' | 'queued' | 'loading' | 'done' | 'error';
@@ -369,7 +370,7 @@ export class PageTranslator {
       this.renderLoading(p);
     }
     try {
-      const res = await sendToBackground({ type: 'translate', segments: batch.map((p) => p.source), title: document.title });
+      const res = await sendToBackground({ type: 'translate', segments: batch.map((p) => p.source), page: pageContext() });
       if (generation !== this.generation) return;
       batch.forEach((p, i) => {
         if (!this.paragraphs.has(p)) return;
