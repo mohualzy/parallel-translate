@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="manifest.open_in_tab" content="true" />
+    <title>设置 · 双语对照翻译</title>
+  </head>
+  <body>
+    <div class="layout">
+      <nav class="nav">
+        <div class="brand"><img src="/icon/48.png" alt="" width="28" height="28" /> 双语对照翻译</div>
+        <a href="#providers">翻译服务</a>
+        <a href="#preferences">翻译偏好</a>
+        <a href="#sites">网站规则</a>
+        <a href="#data">数据与快捷键</a>
+      </nav>
+
+      <main>
+        <!-- ============ 翻译服务 ============ -->
+        <section id="providers" class="card">
+          <header class="card-head">
+            <div>
+              <h2>翻译服务</h2>
+              <p class="muted">支持所有 OpenAI 兼容接口。API Key 只保存在本机浏览器，不会同步或上传到除该服务以外的任何地方。</p>
+            </div>
+          </header>
+
+          <div class="provider-bar">
+            <div id="provider-list" class="provider-list"></div>
+            <div class="add-provider">
+              <select id="preset" aria-label="选择预设"></select>
+              <button id="add-provider" class="btn">＋ 添加</button>
+            </div>
+          </div>
+
+          <p id="no-provider" class="empty muted" hidden>还没有翻译服务。选择一个预设并点击「添加」，填入 API Key 和模型名即可。</p>
+
+          <form id="provider-form" class="form" hidden autocomplete="off">
+            <div class="grid-2">
+              <label class="field">
+                <span>名称</span>
+                <input type="text" name="name" required />
+              </label>
+              <label class="field">
+                <span>接口地址（Base URL）</span>
+                <input type="url" name="baseURL" placeholder="https://api.example.com/v1" required />
+              </label>
+            </div>
+            <label class="field">
+              <span>API Key</span>
+              <div class="input-group">
+                <input type="password" name="apiKey" placeholder="sk-…（本地 Ollama 可留空）" spellcheck="false" />
+                <button type="button" id="toggle-key" class="btn">显示</button>
+              </div>
+            </label>
+            <label class="field">
+              <span>模型</span>
+              <div class="input-group">
+                <input type="text" name="model" list="model-list" required spellcheck="false" />
+                <button type="button" id="fetch-models" class="btn">获取模型列表</button>
+              </div>
+              <datalist id="model-list"></datalist>
+              <small id="models-status" class="muted"></small>
+            </label>
+
+            <details class="advanced">
+              <summary>高级选项</summary>
+              <div class="grid-3">
+                <label class="field">
+                  <span>温度 temperature</span>
+                  <input type="number" name="temperature" min="0" max="2" step="0.1" />
+                </label>
+                <label class="field">
+                  <span>最大并发请求</span>
+                  <input type="number" name="maxConcurrent" min="1" max="20" step="1" />
+                </label>
+                <label class="field">
+                  <span>超时（秒）</span>
+                  <input type="number" name="timeoutSec" min="10" max="600" step="5" />
+                </label>
+              </div>
+              <label class="check">
+                <input type="checkbox" name="stream" /> 流式请求（推荐：慢模型/长批次时更不容易超时）
+              </label>
+              <label class="field">
+                <span>自定义翻译要求（风格、术语等；留空使用默认）</span>
+                <textarea name="prompt" rows="4" id="prompt-input"></textarea>
+                <small class="muted">输出格式约束由程序自动追加，这里只需写风格要求，例如「技术文档风格，API 名称保留英文」。</small>
+              </label>
+            </details>
+
+            <div class="actions">
+              <button type="submit" class="btn btn-primary">保存</button>
+              <button type="button" id="test-provider" class="btn">测试连接</button>
+              <button type="button" id="activate-provider" class="btn">设为当前使用</button>
+              <span class="spacer"></span>
+              <button type="button" id="delete-provider" class="btn btn-danger">删除</button>
+            </div>
+            <div id="test-result" class="test-result" hidden></div>
+          </form>
+        </section>
+
+        <!-- ============ 翻译偏好 ============ -->
+        <section id="preferences" class="card">
+          <header class="card-head"><h2>翻译偏好</h2></header>
+          <div class="form">
+            <div class="grid-2">
+              <label class="field">
+                <span>目标语言</span>
+                <select data-setting="targetLang" id="pref-target"></select>
+              </label>
+              <label class="field">
+                <span>译文样式</span>
+                <select data-setting="translationStyle" id="pref-style"></select>
+              </label>
+              <label class="field">
+                <span>显示方式</span>
+                <select data-setting="displayMode">
+                  <option value="bilingual">双语对照（原文 + 译文）</option>
+                  <option value="translation">仅译文</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>悬停翻译按键</span>
+                <select data-setting="hoverKey" id="pref-hover"></select>
+                <small class="muted">鼠标停在段落上，单独按一下该键即可翻译/收起这一段。</small>
+              </label>
+            </div>
+            <label class="check"><input type="checkbox" data-setting="richText" /> 译文保留链接、加粗、行内代码等格式</label>
+            <label class="check"><input type="checkbox" data-setting="skipShortUI" /> 跳过按钮、标签页、导航链接等短界面文字（推荐，避免撑乱页面布局；悬停翻译不受影响）</label>
+            <label class="check"><input type="checkbox" data-setting="autoTranslateForeign" /> 打开外文页面时自动翻译（会产生 API 费用）</label>
+            <div class="grid-2">
+              <label class="field">
+                <span>每次请求最多段落数</span>
+                <input type="number" data-setting="batchMaxSegments" min="1" max="50" step="1" />
+              </label>
+              <label class="field">
+                <span>每次请求最多字符数</span>
+                <input type="number" data-setting="batchMaxChars" min="200" max="10000" step="100" />
+              </label>
+            </div>
+            <small class="muted">合并请求越大越省钱、上下文越连贯，但单次等待更久，弱模型也更容易漏段（漏段会自动补翻）。</small>
+          </div>
+        </section>
+
+        <!-- ============ 网站规则 ============ -->
+        <section id="sites" class="card">
+          <header class="card-head"><h2>网站规则</h2></header>
+          <div class="form">
+            <div class="grid-2">
+              <label class="field">
+                <span>总是翻译的网站（每行一个域名）</span>
+                <textarea data-setting="alwaysTranslateSites" data-list rows="5" placeholder="example.com"></textarea>
+              </label>
+              <label class="field">
+                <span>永不翻译的网站</span>
+                <textarea data-setting="neverTranslateSites" data-list rows="5" placeholder="mail.google.com"></textarea>
+              </label>
+            </div>
+            <label class="field">
+              <span>不翻译的区域（CSS 选择器，每行一个）</span>
+              <textarea data-setting="excludeSelectors" data-list rows="3" placeholder=".comment-author&#10;#sidebar"></textarea>
+              <small class="muted">域名同时匹配子域名，例如 example.com 也匹配 www.example.com。</small>
+            </label>
+          </div>
+        </section>
+
+        <!-- ============ 数据 ============ -->
+        <section id="data" class="card">
+          <header class="card-head"><h2>数据与快捷键</h2></header>
+          <div class="form">
+            <div class="data-row">
+              <div>
+                <strong>翻译缓存</strong>
+                <p class="muted">已缓存 <span id="cache-count">…</span> 条译文。重复访问页面时直接使用，不再计费；30 天未使用自动清理。</p>
+              </div>
+              <button id="clear-cache" class="btn">清空缓存</button>
+            </div>
+            <div class="data-row">
+              <div>
+                <strong>导入 / 导出设置</strong>
+                <p class="muted">
+                  <label class="check inline"><input type="checkbox" id="export-keys" /> 导出时包含 API Key（文件请妥善保管）</label>
+                </p>
+              </div>
+              <div class="btn-row">
+                <button id="export" class="btn">导出</button>
+                <button id="import" class="btn">导入</button>
+                <input type="file" id="import-file" accept="application/json" hidden />
+              </div>
+            </div>
+            <div class="data-row">
+              <div>
+                <strong>快捷键</strong>
+                <p class="muted" id="shortcut-list"></p>
+              </div>
+              <button id="edit-shortcuts" class="btn">修改快捷键</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
