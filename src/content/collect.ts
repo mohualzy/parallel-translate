@@ -1,4 +1,4 @@
-import { isParagraphBreak, type DomClassifier } from './dom';
+import { composedChildren, isParagraphBreak, type DomClassifier } from './dom';
 
 /**
  * 一个「行内片段」：某个块级容器下连续的行内子节点，即一个待翻译段落。
@@ -16,7 +16,13 @@ export interface Run {
  * 从 root 开始收集所有行内片段（文档顺序）。
  * deep=false 时只收集 root 的直接子片段，用于悬停翻译定位单个段落。
  */
-export function collectRuns(root: Element, classifier: DomClassifier, deep = true): Run[] {
+export function collectRuns(
+  root: Element,
+  classifier: DomClassifier,
+  deep = true,
+  /** 遍历中遇到 open shadow root 时回调（用于给它挂 MutationObserver、注入样式） */
+  onShadowRoot?: (root: ShadowRoot) => void,
+): Run[] {
   const runs: Run[] = [];
 
   const visit = (el: Element) => {
@@ -31,7 +37,8 @@ export function collectRuns(root: Element, classifier: DomClassifier, deep = tru
       current = [];
     };
 
-    for (const child of Array.from(el.childNodes)) {
+    if (el.shadowRoot) onShadowRoot?.(el.shadowRoot);
+    for (const child of composedChildren(el)) {
       if (isParagraphBreak(child)) {
         sawBlock = true;
         flush();

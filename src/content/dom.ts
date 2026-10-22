@@ -134,6 +134,29 @@ export function buildExcludeSelector(extra: string[]): string {
   return [...BUILTIN_EXCLUDE, ...valid].join(',');
 }
 
+/**
+ * 组合树上的父元素：走到 shadow root 顶层时跳到它的宿主元素。
+ * 段落容器查找、排除区域判断都要能穿过 Shadow DOM 边界。
+ */
+export function composedParent(el: Element): Element | null {
+  if (el.parentElement) return el.parentElement;
+  const parent = el.parentNode;
+  return parent instanceof ShadowRoot ? parent.host : null;
+}
+
+/**
+ * 组合树上的子节点（实际渲染出来的内容）：有 open shadow root 的元素取 shadow root 的子节点；
+ * <slot> 取分配进来的节点，没有分配时取其后备内容。closed shadow root 读不到，保持原样。
+ */
+export function composedChildren(el: Element): Node[] {
+  if (el.shadowRoot) return Array.from(el.shadowRoot.childNodes);
+  if (el instanceof HTMLSlotElement) {
+    const assigned = el.assignedNodes({ flatten: true });
+    if (assigned.length > 0) return assigned;
+  }
+  return Array.from(el.childNodes);
+}
+
 export class DomClassifier {
   private cache = new WeakMap<Node, NodeKind>();
 
@@ -152,7 +175,7 @@ export class DomClassifier {
 
   /** el 自身或祖先是否在排除区域 / 本扩展的元素内 */
   isInsideExcluded(el: Element): boolean {
-    for (let cur: Element | null = el; cur; cur = cur.parentElement) {
+    for (let cur: Element | null = el; cur; cur = composedParent(cur)) {
       if (cur.localName === OWN_TAG || this.isExcluded(cur)) return true;
     }
     return false;
@@ -173,6 +196,8 @@ export class DomClassifier {
     if (IGNORED_TAGS.has(tag) || tag.startsWith('ptx-') || el.matches(VISUALLY_HIDDEN)) return 'ignore';
 
     if (BLOCK_TAGS.has(tag)) return this.isExcluded(el) ? 'skip' : 'block';
+    // Shadow 宿主与 <slot> 的真实内容不在自己的 childNodes 里，按块进入，由 composedChildren 取组合树子节点
+    if (el.shadowRoot || tag === 'slot') return this.isExcluded(el) ? 'skip' : 'block';
 
     const cs = getComputedStyle(el);
     // 脱离文档的元素（以及 happy-dom）会返回空字符串；CSS 中 display 的初始值就是 inline
@@ -198,7 +223,7 @@ export class DomClassifier {
       const kind = this.classify(el);
       if (kind === 'block') return el;
       if (kind === 'skip') return null;
-      el = el.parentElement;
+      el = composedParent(el);
     }
     return null;
   }

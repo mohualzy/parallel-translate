@@ -2,9 +2,10 @@ import { isProbablyInLanguage } from '@/lib/languages';
 import { sendToBackground, type TabState } from '@/lib/messages';
 import type { Settings } from '@/lib/settings';
 import { collectRuns, runContainsPoint, type Run } from './collect';
-import { buildExcludeSelector, CONTENT_CONTAINERS, DomClassifier, looksLikeUIChrome, OWN_TAG } from './dom';
+import { buildExcludeSelector, composedParent, CONTENT_CONTAINERS, DomClassifier, looksLikeUIChrome, OWN_TAG } from './dom';
 import { pageContext } from './page-context';
 import { deserialize, sameText, serialize } from './richtext';
+import { ensureShadowStyles } from './shadow-styles';
 import { TitleTranslator } from './title';
 
 type State = 'idle' | 'queued' | 'loading' | 'done' | 'error';
@@ -80,6 +81,8 @@ export class PageTranslator {
   private dirtyRoots = new Set<Element>();
   /** 我们自己删除的节点，MutationObserver 回调里据此忽略 */
   private ownRemovals = new WeakSet<Node>();
+  /** 已挂上 MutationObserver 的 shadow root（MutationObserver 看不到 shadow 树内部的变化） */
+  private watchedRoots = new WeakSet<ShadowRoot>();
   /** 待检查是否被截断的段落（下一帧批量读布局，避免逐段强制重排） */
   private unclampQueue = new Set<Paragraph>();
   /** 被解除截断的元素，关闭翻译时复原 */
@@ -228,7 +231,7 @@ export class PageTranslator {
     try {
       for (const root of roots) {
         if (!root.isConnected || this.classifier.isInsideExcluded(root)) continue;
-        for (const run of collectRuns(root, this.classifier)) this.register(run);
+        for (const run of collectRuns(root, this.classifier, true, (sr) => this.watchShadowRoot(sr))) this.register(run);
       }
     } finally {
       this.dynamicScan = false;
@@ -312,6 +315,12 @@ export class PageTranslator {
     }
   }
 
+  private watchShadowRoot(root: ShadowRoot) {
+    if (!this.mo || this.watchedRoots.has(root)) return;
+    this.mo.observe(root, { childList: true, subtree: true, characterData: true });
+    this.watchedRoots.add(root);
+  }
+
   private emitEnabled() {
     for (const listener of this.enabledListeners) listener(this.enabled);
   }
@@ -335,6 +344,7 @@ export class PageTranslator {
     this.queue = [];
     this.dirtyRoots.clear();
     this.lastByContainer = new WeakMap();
+    this.watchedRoots = new WeakSet();
     this.unclampQueue.clear();
     for (const el of this.unclamped) el.removeAttribute('data-ptx-unclamp');
     this.unclamped.clear();
@@ -343,7 +353,8 @@ export class PageTranslator {
   // ---------- 懒翻译与批量请求 ----------
 
   private observeTarget(p: Paragraph): Element {
-    if (p.whole) return p.container;
+    // display: contents 的容器（如 <slot>）没有盒子，IntersectionObserver 永远不会触发，改观察片段本身
+    if (p.whole && getComputedStyle(p.container).display !== 'contents') return p.container;
     const firstElement = p.nodes.find((n): n is Element => n.nodeType === Node.ELEMENT_NODE);
     if (firstElement) return firstElement;
     // 纯文本片段没有可观察的元素；观察整个容器会让长文（如 <br><br> 分段的文章）一次性全部排队。
@@ -482,6 +493,10 @@ export class PageTranslator {
       const last = p.nodes[p.nodes.length - 1] as ChildNode | undefined;
       if (!last?.isConnected) return undefined;
       last.after(p.el);
+      // 被分配到具名 slot 的内容：译文跟着进同一个 slot，否则不会被渲染
+      const slot = last.nodeType === Node.ELEMENT_NODE ? (last as Element).getAttribute('slot') : null;
+      if (slot) p.el.setAttribute('slot', slot);
+      ensureShadowStyles(p.el);
     }
     return p.el;
   }
@@ -636,7 +651,7 @@ export class PageTranslator {
     }
     // 只扫描最外层，避免嵌套重复
     const outermost = [...blocks].filter((b) => {
-      for (let a = b.parentElement; a; a = a.parentElement) if (blocks.has(a)) return false;
+      for (let a = composedParent(b); a; a = composedParent(a)) if (blocks.has(a)) return false;
       return true;
     });
     this.scan(outermost, true);

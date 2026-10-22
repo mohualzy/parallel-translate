@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Shadow DOM Fixture</title>
+  </head>
+  <body>
+    <!-- 类似新版 Reddit 的 Web Components：正文一部分在 shadow 树里，一部分通过 slot 投影 -->
+    <x-post id="post">
+      <span id="slotted">Slotted light DOM text rendered through a slot.</span>
+    </x-post>
+    <script>
+      customElements.define(
+        'x-post',
+        class extends HTMLElement {
+          constructor() {
+            super();
+            const root = this.attachShadow({ mode: 'open' });
+            root.innerHTML = `
+              <h2 id="shadow-title">Post title inside the shadow tree</h2>
+              <p id="shadow-body">This paragraph lives in an open shadow root.</p>
+              <div class="body"><slot></slot></div>
+              <div id="shadow-dynamic"></div>`;
+          }
+        },
+      );
+    </script>
+  </body>
+</html>

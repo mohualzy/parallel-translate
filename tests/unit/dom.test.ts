@@ -87,6 +87,18 @@ describe('collectRuns', () => {
     expect(texts()).toEqual(['Star now']);
   });
 
+  it('进入 open shadow root 收集段落，并回报遇到的 shadow root', () => {
+    setup('<x-host id="host"></x-host>');
+    const host = document.getElementById('host')!;
+    const root = host.attachShadow({ mode: 'open' });
+    root.innerHTML = '<p>Inside the shadow tree.</p>';
+    const seen: ShadowRoot[] = [];
+    classifier.reset();
+    const runs = collectRuns(document.body, classifier, true, (sr) => seen.push(sr));
+    expect(runs.map((r) => r.nodes.map((n) => n.textContent).join(''))).toContain('Inside the shadow tree.');
+    expect(seen).toEqual([root]);
+  });
+
   it('html/body 上的 translate="no" 不屏蔽整页', () => {
     setup('<p>Still here</p>');
     document.body.setAttribute('translate', 'no');

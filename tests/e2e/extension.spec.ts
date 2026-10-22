@@ -339,6 +339,32 @@ test('标签页标题：翻译时换成译文，页面改标题后重新翻译�
   await page.close();
 });
 
+test('Shadow DOM：翻译 open shadow root 内的段落与 slot 投影内容，译文有样式，shadow 内新增内容也会翻译', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/shadow.html`);
+  await toggle(page);
+  // Playwright 的 CSS 定位会自动穿透 open shadow root
+  await expect(page.locator('#shadow-title > ptx-t')).toContainText('【译】Post title inside the shadow tree');
+  const body = page.locator('#shadow-body > ptx-t');
+  await expect(body).toContainText('【译】This paragraph lives in an open shadow root.');
+  // shadow root 注入了样式：段落译文是块级显示
+  expect(await body.evaluate((el) => getComputedStyle(el).display)).toBe('block');
+  // 投影内容的译文插在 light DOM（宿主的子节点），经默认 slot 渲染在原文之后
+  const slotted = page.locator('#post > ptx-t');
+  await expect(slotted).toContainText('【译】Slotted light DOM text');
+  expect(await slotted.evaluate((el) => el.assignedSlot !== null && el.getBoundingClientRect().height > 0)).toBe(true);
+
+  await page.evaluate(() => {
+    const host = document.querySelector('#post')!;
+    const p = document.createElement('p');
+    p.id = 'shadow-added';
+    p.textContent = 'A comment loaded later inside the shadow root.';
+    host.shadowRoot!.querySelector('#shadow-dynamic')!.append(p);
+  });
+  await expect(page.locator('#shadow-added > ptx-t')).toContainText('【译】A comment loaded later');
+  await page.close();
+});
+
 test('解除截断：省略号容器里的译文完整可见，关闭翻译后复原', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);
