@@ -15,7 +15,11 @@ export type BackgroundRequest =
   | { type: 'test-provider'; provider: ProviderConfig }
   | { type: 'list-models'; provider: ProviderConfig }
   | { type: 'clear-cache' }
-  | { type: 'cache-count' };
+  | { type: 'cache-count' }
+  /** 顶层页面翻译开关变化后，请后台转告同一标签页的所有 iframe */
+  | { type: 'broadcast-enabled'; enabled: boolean }
+  /** iframe 加载时询问顶层页面是否在翻译 */
+  | { type: 'top-frame-state' };
 
 export interface TranslateResult {
   /** 与 segments 等长；null 表示该段失败 */
@@ -30,6 +34,8 @@ export interface BackgroundResponses {
   'list-models': string[];
   'clear-cache': null;
   'cache-count': number;
+  'broadcast-enabled': null;
+  'top-frame-state': TabState | null;
 }
 
 export type Envelope<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -66,7 +72,9 @@ export type TabRequest =
   | { type: 'translate-whole-page' }
   | { type: 'toggle-display-mode' }
   | { type: 'toggle-mask' }
-  | { type: 'get-state' };
+  | { type: 'get-state' }
+  /** 后台转发给 iframe：跟随顶层页面开 / 关翻译 */
+  | { type: 'set-enabled'; enabled: boolean };
 
 export interface TabState {
   enabled: boolean;
@@ -77,6 +85,7 @@ export interface TabState {
   pageLang: string;
 }
 
+/** 发给标签页的顶层页面（frameId 0）；iframe 的状态由顶层页面广播同步，不直接控制 */
 export async function sendToTab(tabId: number, request: TabRequest): Promise<TabState> {
-  return (await browser.tabs.sendMessage(tabId, request)) as TabState;
+  return (await browser.tabs.sendMessage(tabId, request, { frameId: 0 })) as TabState;
 }

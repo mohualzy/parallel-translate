@@ -10,12 +10,27 @@ import {
   type SelectionEvent,
   type SelectionRequest,
   type TabRequest,
+  type TabState,
 } from '@/lib/messages';
 
 const MENU_TOGGLE = 'ptx-toggle';
 
-async function handle(request: BackgroundRequest): Promise<BackgroundResponses[BackgroundRequest['type']]> {
+async function handle(
+  request: BackgroundRequest,
+  sender: { tab?: { id?: number } },
+): Promise<BackgroundResponses[BackgroundRequest['type']]> {
+  const tabId = sender.tab?.id;
   switch (request.type) {
+    case 'broadcast-enabled':
+      // 发给整个标签页的所有 frame；顶层页面自己会忽略 set-enabled
+      if (tabId !== undefined) {
+        await browser.tabs.sendMessage(tabId, { type: 'set-enabled', enabled: request.enabled } satisfies TabRequest).catch(() => undefined);
+      }
+      return null;
+    case 'top-frame-state':
+      if (tabId === undefined) return null;
+      return ((await browser.tabs.sendMessage(tabId, { type: 'get-state' } satisfies TabRequest, { frameId: 0 }).catch(() => null)) ??
+        null) as TabState | null;
     case 'translate':
       return translateSegments(request.segments, request.page);
     case 'test-provider':
@@ -33,8 +48,8 @@ async function handle(request: BackgroundRequest): Promise<BackgroundResponses[B
 async function sendToActiveTab(request: TabRequest, tabId?: number) {
   const id = tabId ?? (await browser.tabs.query({ active: true, currentWindow: true }))[0]?.id;
   if (id === undefined) return;
-  // chrome:// 等页面没有内容脚本，忽略即可
-  await browser.tabs.sendMessage(id, request).catch(() => undefined);
+  // 只发给顶层页面，iframe 由顶层页面广播同步；chrome:// 等页面没有内容脚本，忽略即可
+  await browser.tabs.sendMessage(id, request, { frameId: 0 }).catch(() => undefined);
 }
 
 export default defineBackground(() => {
@@ -77,8 +92,8 @@ export default defineBackground(() => {
   });
 
   // 用 sendResponse + return true 的写法，兼容所有 Chromium 版本与 Firefox
-  browser.runtime.onMessage.addListener((request: BackgroundRequest, _sender, sendResponse) => {
-    handle(request).then(
+  browser.runtime.onMessage.addListener((request: BackgroundRequest, sender, sendResponse) => {
+    handle(request, sender).then(
       (data) => sendResponse({ ok: true, data } satisfies Envelope<unknown>),
       (err: unknown) => sendResponse({ ok: false, error: err instanceof Error ? err.message : String(err) }),
     );

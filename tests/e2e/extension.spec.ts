@@ -365,6 +365,40 @@ test('Shadow DOM：翻译 open shadow root 内的段落与 slot 投影内容，�
   await page.close();
 });
 
+test('iframe：跟随顶层页面开关，后加载的 iframe 也跟随；太小的 iframe 不翻译；弹窗状态来自顶层', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/frame.html`);
+  await page.waitForTimeout(500); // 等各 frame 的内容脚本就绪
+  const inner = page.frameLocator('#inner');
+
+  await toggle(page);
+  await expect(translation(page, '#top-p')).toContainText('【译】This paragraph belongs to the top page.');
+  await expect(inner.locator('#frame-p > ptx-t')).toContainText('【译】This paragraph lives inside an embedded iframe.');
+
+  // 翻译开启后才加载的 iframe
+  await page.evaluate(() => {
+    const frame = document.createElement('iframe');
+    frame.id = 'late';
+    frame.src = '/frame-inner.html';
+    frame.style.cssText = 'width: 600px; height: 200px';
+    document.body.append(frame);
+  });
+  await expect(page.frameLocator('#late').locator('#frame-p > ptx-t')).toContainText('【译】This paragraph lives inside');
+
+  // 弹窗查询到的是顶层页面的状态
+  const state = await sw.evaluate(async (target) => {
+    const tab = (await chrome.tabs.query({})).find((t) => t.url === target);
+    return chrome.tabs.sendMessage(tab!.id!, { type: 'get-state' }, { frameId: 0 });
+  }, page.url());
+  expect(state).toMatchObject({ enabled: true });
+
+  await toggle(page);
+  await expect(inner.locator('ptx-t')).toHaveCount(0);
+  await expect(page.locator('ptx-t')).toHaveCount(0);
+  expect(server.batches.flat().some((s) => s.includes('Tracking pixel'))).toBe(false);
+  await page.close();
+});
+
 test('解除截断：省略号容器里的译文完整可见，关闭翻译后复原', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);
