@@ -13,6 +13,8 @@ export interface MockServer {
   batches: string[][];
   /** 非空时下一批请求都返回该状态码 */
   failWith: number | null;
+  /** 多段请求时故意漏掉匹配的段，模拟模型漏段 */
+  dropWhen: ((segment: string) => boolean) | null;
   close(): Promise<void>;
 }
 
@@ -32,7 +34,7 @@ function extractSegments(content: string): string[] {
 }
 
 export async function startMockServer(): Promise<MockServer> {
-  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], failWith: null };
+  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], failWith: null, dropWhen: null };
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -64,7 +66,9 @@ export async function startMockServer(): Promise<MockServer> {
       const user = body.messages.at(-1).content as string;
       const segments = extractSegments(user);
       state.batches.push(segments);
-      const output = segments.map((s, i) => `<s id="${i}">${PREFIX}${s}</s>`).join('\n');
+      const output = segments
+        .map((s, i) => (segments.length > 1 && state.dropWhen?.(s) ? '' : `<s id="${i}">${PREFIX}${s}</s>`))
+        .join('\n');
 
       if (body.stream) {
         res.writeHead(200, { 'content-type': 'text/event-stream' });

@@ -152,6 +152,29 @@ test('动态内容：新插入的段落自动翻译，被页面删除的译文�
   await page.close();
 });
 
+test('批内去重与漏段补翻：相同段落只发送一次，被模型漏掉的段单独补翻', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  await page.evaluate(() => {
+    const texts = ['Duplicate sentence appears twice.', 'Duplicate sentence appears twice.', 'The model skips this sentence in batches.'];
+    const html = texts.map((t, i) => `<p id="p-batch-${i}">${t}</p>`).join('');
+    document.querySelector('#title')!.insertAdjacentHTML('afterend', html);
+  });
+  server.dropWhen = (s) => s.includes('skips this sentence');
+  try {
+    await toggle(page);
+    await expect(translation(page, '#p-batch-0')).toContainText('【译】Duplicate sentence');
+    await expect(translation(page, '#p-batch-1')).toContainText('【译】Duplicate sentence');
+    await expect(translation(page, '#p-batch-2')).toContainText('【译】The model skips');
+  } finally {
+    server.dropWhen = null;
+  }
+  expect(server.batches.flat().filter((s) => s === 'Duplicate sentence appears twice.')).toHaveLength(1);
+  const withSkipped = server.batches.filter((b) => b.some((s) => s.includes('skips this sentence')));
+  expect(withSkipped.map((b) => b.length > 1)).toEqual([true, false]);
+  await page.close();
+});
+
 test('还原与缓存：关闭后译文全部移除，再次开启命中缓存不再请求模型', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);

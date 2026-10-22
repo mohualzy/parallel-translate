@@ -1,9 +1,13 @@
 import { browser } from 'wxt/browser';
 import { Semaphore, withRetry } from '@/lib/async';
+import { translateBatch } from '@/lib/batch';
 import type { TranslateResult } from '@/lib/messages';
 import { buildMessages, createClient, HttpError, parseSegments, PROMPT_VERSION, type ChatMessage } from '@/lib/providers';
 import { getActiveProvider, getSettings, type ProviderConfig, type Settings } from '@/lib/settings';
 import * as cache from './cache';
+
+/** 一批里有段缺失时，补翻最多额外请求的次数（见 docs/DECISIONS.md D14） */
+const MAX_RECOVERY_REQUESTS = 2;
 
 const semaphores = new Map<string, Semaphore>();
 
@@ -68,7 +72,7 @@ async function requireProvider(): Promise<ProviderConfig> {
 
 /**
  * 翻译一批段落：先查缓存，未命中的合并成一次请求；
- * 模型漏掉的段再逐段补翻；仍失败的段返回 null 并附带原因。
+ * 模型漏掉的段在预算内二分补翻；仍失败的段返回 null 并附带原因。
  */
 export async function translateSegments(segments: string[], title: string): Promise<TranslateResult> {
   const [settings, provider] = await Promise.all([getSettings(), requireProvider()]);
@@ -79,35 +83,19 @@ export async function translateSegments(segments: string[], title: string): Prom
   if (missing.length === 0) return { translations };
 
   const prompt = { targetLang: settings.targetLang, stylePrompt: provider.prompt, title };
-  const sources = missing.map((i) => segments[i]!);
-  let error: string | undefined;
-
-  try {
-    const output = parseSegments(await complete(provider, buildMessages(sources, prompt)), sources.length);
-    if (sources.length > 1) {
-      await Promise.all(
-        output.map(async (text, j) => {
-          if (text !== null) return;
-          try {
-            output[j] = parseSegments(await complete(provider, buildMessages([sources[j]!], prompt)), 1)[0] ?? null;
-          } catch (err) {
-            error = describeError(err, provider);
-          }
-        }),
-      );
-    }
-    missing.forEach((i, j) => (translations[i] = output[j] ?? null));
-  } catch (err) {
-    error = describeError(err, provider);
-  }
+  const outcome = await translateBatch(
+    missing.map((i) => segments[i]!),
+    async (batch) => parseSegments(await complete(provider, buildMessages(batch, prompt)), batch.length),
+    { maxRecoveryRequests: MAX_RECOVERY_REQUESTS, describeError: (err) => describeError(err, provider) },
+  );
+  missing.forEach((i, j) => (translations[i] = outcome.translations[j] ?? null));
 
   const fresh = missing.flatMap((i) => {
     const t = translations[i];
     return t === null || t === undefined ? [] : [[keys[i]!, t] as [string, string]];
   });
   await cache.setMany(fresh).catch(() => undefined); // 缓存写失败不影响本次翻译
-  if (!error && translations.some((t) => t === null)) error = '模型输出缺少部分段落';
-  return { translations, error };
+  return { translations, error: outcome.error };
 }
 
 export async function testProvider(provider: ProviderConfig): Promise<{ text: string; ms: number }> {
