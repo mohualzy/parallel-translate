@@ -1,0 +1,101 @@
+/*
+ * 注入到所有网页的样式。只作用于本扩展的自定义元素（ptx-*）和 data-ptx-hide 属性，
+ * 不影响页面原有元素的默认外观。
+ */
+
+ptx-t {
+  /* 继承原文的字体、颜色；自定义元素不受站点对 span/div 的样式污染 */
+  font: inherit;
+  color: inherit;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+ptx-t.ptx-block {
+  display: block !important;
+  margin: 0.3em 0 0.1em !important;
+}
+
+ptx-t.ptx-inline {
+  display: inline !important;
+  margin: 0 0 0 0.4em !important;
+}
+
+ptx-i {
+  display: inline;
+}
+
+/* ---------- 译文样式 ---------- */
+
+ptx-t.ptx-style-dashed > ptx-i {
+  text-decoration: underline dashed rgba(128, 128, 128, 0.7);
+  text-underline-offset: 0.3em;
+}
+
+ptx-t.ptx-style-underline > ptx-i {
+  text-decoration: underline solid #4f8ef7;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.3em;
+}
+
+ptx-t.ptx-style-highlight > ptx-i {
+  background: rgba(255, 210, 70, 0.32);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  padding: 0 0.1em;
+  border-radius: 2px;
+}
+
+ptx-t.ptx-style-weak > ptx-i {
+  opacity: 0.6;
+}
+
+ptx-t.ptx-style-blur > ptx-i {
+  filter: blur(5px);
+  transition: filter 0.2s;
+}
+
+ptx-t.ptx-style-blur:hover > ptx-i {
+  filter: none;
+}
+
+/* ---------- 状态 ---------- */
+
+ptx-spin {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.45;
+  vertical-align: middle;
+  animation: ptx-spin 0.8s linear infinite;
+}
+
+@keyframes ptx-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+ptx-t.ptx-error {
+  color: #d93025 !important;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+/* ---------- 仅译文模式 ---------- */
+
+[data-ptx-hide] {
+  font-size: 0 !important;
+}
+
+[data-ptx-hide] > :not(ptx-t) {
+  display: none !important;
+}
+
+[data-ptx-hide] > ptx-t {
+  display: inline !important;
+  margin: 0 !important;
+}
