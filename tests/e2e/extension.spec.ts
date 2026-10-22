@@ -317,6 +317,28 @@ test('模型原样返回的段落（人名等）不重复显示', async () => {
   await page.close();
 });
 
+test('标签页标题：翻译时换成译文，页面改标题后重新翻译，关闭时还原；上下文仍用原标题', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  await toggle(page);
+  await expect(page).toHaveTitle('【译】E2E Fixture');
+  // 标题翻译之后发出的正文请求，上下文里仍是原标题
+  await page.evaluate(() => {
+    const p = document.createElement('p');
+    p.textContent = 'A paragraph requested after the title was translated.';
+    document.querySelector('#title')!.after(p);
+  });
+  await expect.poll(() => server.users.some((u) => u.includes('requested after the title'))).toBe(true);
+  const user = server.users.find((u) => u.includes('requested after the title'))!;
+  expect(user).toContain('网页标题（仅供参考，不要翻译）：E2E Fixture\n');
+
+  await page.evaluate(() => (document.title = 'Second Route'));
+  await expect(page).toHaveTitle('【译】Second Route');
+  await toggle(page);
+  await expect(page).toHaveTitle('Second Route');
+  await page.close();
+});
+
 test('解除截断：省略号容器里的译文完整可见，关闭翻译后复原', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);

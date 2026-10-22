@@ -26,6 +26,8 @@ export interface Settings {
   skipShortUI: boolean;
   /** 译文被省略号 / 行数限制截断时解除容器截断 */
   unclamp: boolean;
+  /** 翻译时把标签页标题换成译文 */
+  translateTitle: boolean;
   /** 页面语言不是目标语言时自动翻译 */
   autoTranslateForeign: boolean;
   alwaysTranslateSites: string[];
@@ -69,6 +71,7 @@ export const DEFAULT_SETTINGS: Settings = {
   richText: true,
   skipShortUI: true,
   unclamp: true,
+  translateTitle: true,
   autoTranslateForeign: false,
   alwaysTranslateSites: [],
   neverTranslateSites: [],

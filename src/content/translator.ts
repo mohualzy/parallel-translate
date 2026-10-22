@@ -4,7 +4,8 @@ import type { Settings } from '@/lib/settings';
 import { collectRuns, runContainsPoint, type Run } from './collect';
 import { buildExcludeSelector, CONTENT_CONTAINERS, DomClassifier, looksLikeUIChrome, OWN_TAG } from './dom';
 import { pageContext } from './page-context';
-import { deserialize, serialize, unescapeText } from './richtext';
+import { deserialize, sameText, serialize } from './richtext';
+import { TitleTranslator } from './title';
 
 type State = 'idle' | 'queued' | 'loading' | 'done' | 'error';
 
@@ -39,16 +40,6 @@ const SETTLE_MS = 1000;
 /** 整页可翻译文字少于这个字数时提示「可能已是目标语言」 */
 const SAME_LANGUAGE_MAX_CHARS = 100;
 
-/** 去掉占位标签、反转义、压缩空白、忽略大小写后比较译文与原文 */
-export function sameText(translation: string, source: string): boolean {
-  const norm = (s: string) =>
-    unescapeText(s.replace(/<\/?[gx]\d+\s*\/?>/g, ''))
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
-  return norm(translation) === norm(source);
-}
-
 function isClipping(el: Element): boolean {
   const cs = getComputedStyle(el);
   if (/auto|scroll/.test(`${cs.overflowX} ${cs.overflowY}`)) return false;
@@ -67,6 +58,10 @@ export class PageTranslator {
   pageLang = '';
 
   private enabledListeners = new Set<(enabled: boolean) => void>();
+  private title = new TitleTranslator(
+    () => this.settings,
+    (text) => this.isWorthTranslating(text),
+  );
 
   private classifier: DomClassifier;
   private paragraphs = new Set<Paragraph>();
@@ -117,6 +112,7 @@ export class PageTranslator {
     this.mo = new MutationObserver((records) => this.onMutations(records));
     this.mo.observe(document.body, { childList: true, subtree: true, characterData: true });
     this.scan([document.body]);
+    this.title.start();
     this.emitEnabled();
     // 稍等动态内容加载后再判断，避免 SPA 首屏还没渲染就误报
     const generation = this.generation;
@@ -240,10 +236,15 @@ export class PageTranslator {
   }
 
   /** manual：用户悬停点名翻译的段落，不受「跳过界面文字」限制 */
-  private isTranslatable(run: Run, plain: string, manual: boolean): boolean {
+  /** 文本本身值不值得翻译：有字母、不是网址/邮箱、不是目标语言 */
+  private isWorthTranslating(plain: string): boolean {
     if (plain.length < 2 || !/\p{L}/u.test(plain)) return false;
     if (/^(https?:\/\/|www\.)\S+$/i.test(plain) || /^\S+@\S+\.\S+$/.test(plain)) return false;
-    if (isProbablyInLanguage(plain, this.settings.targetLang)) return false;
+    return !isProbablyInLanguage(plain, this.settings.targetLang);
+  }
+
+  private isTranslatable(run: Run, plain: string, manual: boolean): boolean {
+    if (!this.isWorthTranslating(plain)) return false;
     return manual || !this.settings.skipShortUI || !looksLikeUIChrome(run.container, run.nodes, plain);
   }
 
@@ -317,6 +318,7 @@ export class PageTranslator {
 
   private reset() {
     const wasEnabled = this.enabled;
+    this.title.stop();
     this.generation++;
     this.enabled = false;
     if (wasEnabled) queueMicrotask(() => this.emitEnabled());
@@ -437,7 +439,7 @@ export class PageTranslator {
       this.renderLoading(p);
     }
     try {
-      const res = await sendToBackground({ type: 'translate', segments: batch.map((p) => p.source), page: pageContext() });
+      const res = await sendToBackground({ type: 'translate', segments: batch.map((p) => p.source), page: pageContext(this.title.originalTitle) });
       if (generation !== this.generation) return;
       batch.forEach((p, i) => {
         if (!this.paragraphs.has(p)) return;

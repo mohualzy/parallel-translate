@@ -134,3 +134,13 @@ export function deserialize(translated: string, refs: Element[], doc: Document):
   appendText(normalized.slice(last));
   return fragment;
 }
+
+/** 去掉占位标签、反转义、压缩空白、忽略大小写后比较译文与原文 */
+export function sameText(translation: string, source: string): boolean {
+  const norm = (s: string) =>
+    unescapeText(s.replace(/<\/?[gx]\d+\s*\/?>/g, ''))
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  return norm(translation) === norm(source);
+}

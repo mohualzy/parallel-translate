@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sameText } from '@/content/translator';
+import { sameText } from '@/content/richtext';
 
 describe('sameText', () => {
   it('忽略占位标签、空白、大小写与实体转义', () => {
