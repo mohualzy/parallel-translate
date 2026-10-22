@@ -257,9 +257,20 @@ export class PageTranslator {
 
   // ---------- 懒翻译与批量请求 ----------
 
-  private observe(p: Paragraph) {
+  private observeTarget(p: Paragraph): Element {
+    if (p.whole) return p.container;
     const firstElement = p.nodes.find((n): n is Element => n.nodeType === Node.ELEMENT_NODE);
-    const target = p.whole ? p.container : (firstElement ?? p.container);
+    if (firstElement) return firstElement;
+    // 纯文本片段没有可观察的元素；观察整个容器会让长文（如 <br><br> 分段的文章）一次性全部排队。
+    // 先在片段后插入空的译文占位作为锚点，进入视口后再填充
+    const anchor = this.ensureView(p);
+    if (!anchor) return p.container;
+    if (p.state === 'idle') anchor.className = 'ptx-pending';
+    return anchor;
+  }
+
+  private observe(p: Paragraph) {
+    const target = this.observeTarget(p);
     let set = this.targets.get(target);
     if (!set) {
       this.targets.set(target, (set = new Set()));

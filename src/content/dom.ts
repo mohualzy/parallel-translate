@@ -71,6 +71,23 @@ export const CONTENT_CONTAINERS = new Set([
 
 const UI_ANCESTORS = 'a,button,label,[role="button"],[role="link"],[role="tab"],[role="menuitem"]';
 
+const isBr = (n: Node | null): boolean => n?.nodeType === Node.ELEMENT_NODE && (n as Element).localName === 'br';
+const isBlankText = (n: Node | null): boolean => n?.nodeType === Node.TEXT_NODE && !n.textContent?.trim();
+
+function meaningfulSibling(node: Node, dir: 'previousSibling' | 'nextSibling'): Node | null {
+  let cur = node[dir];
+  while (cur && (isBlankText(cur) || cur.nodeType === Node.COMMENT_NODE)) cur = cur[dir];
+  return cur;
+}
+
+/**
+ * 连续两个 <br>（中间只有空白）视为段落分隔，单个 <br> 仍是段内换行。
+ * 用 <br><br> 分段的页面（论坛、老式博客）因此能逐段对照，而不是整篇成一段。
+ */
+export function isParagraphBreak(br: Node): boolean {
+  return isBr(br) && (isBr(meaningfulSibling(br, 'previousSibling')) || isBr(meaningfulSibling(br, 'nextSibling')));
+}
+
 /** 词数：拉丁/西里尔按词，CJK 每两个字算一个词 */
 function wordCount(text: string): number {
   const words = text.match(/[\p{Script=Latin}\p{Script=Cyrillic}\p{N}]+/gu)?.length ?? 0;
@@ -167,7 +184,9 @@ export class DomClassifier {
 
     if (OPAQUE_TAGS.has(tag) || this.isExcluded(el)) return inlineLevel ? 'opaque' : 'skip';
     if (!inlineLevel) return 'block';
-    return el.querySelector(BLOCK_SELECTOR) ? 'block' : 'inline';
+    if (el.querySelector(BLOCK_SELECTOR)) return 'block';
+    // 内部用 <br><br> 分段的行内元素（老式网页常见 <font> 包全文）按块处理，才能进入内部逐段切分
+    return Array.from(el.querySelectorAll('br')).some(isParagraphBreak) ? 'block' : 'inline';
   }
 
   /** 最近的块级祖先（段落容器） */

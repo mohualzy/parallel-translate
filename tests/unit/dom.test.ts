@@ -69,6 +69,19 @@ describe('collectRuns', () => {
     expect(texts()).toEqual(['Run npm install first']);
   });
 
+  it('连续两个 <br> 分段，单个 <br> 仍在段内', () => {
+    setup('<p>First para<br>\n<br>Second <a href="#">link</a> para<br>still second</p>');
+    // texts() 拼接 textContent，<br> 不产生字符；两个 <br> 之间的空白片段之后会被过滤
+    expect(texts().filter(Boolean)).toEqual(['First para', 'Second link parastill second']);
+  });
+
+  it('内部用 <br><br> 分段的行内元素按块处理，进入内部切分', () => {
+    setup('<div><font>Para one.<br><br>Para two.</font></div>');
+    const runs = collectRuns(document.body, classifier).filter((r) => r.nodes.some((n) => n.textContent?.trim()));
+    expect(runs.map((r) => r.container.localName)).toEqual(['font', 'font']);
+    expect(texts().filter(Boolean)).toEqual(['Para one.', 'Para two.']);
+  });
+
   it('读屏专用的隐藏文字被忽略', () => {
     setup('<p>Star<span class="sr-only"> this repository</span> now</p>');
     expect(texts()).toEqual(['Star now']);

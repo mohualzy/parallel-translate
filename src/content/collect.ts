@@ -1,4 +1,4 @@
-import type { DomClassifier } from './dom';
+import { isParagraphBreak, type DomClassifier } from './dom';
 
 /**
  * 一个「行内片段」：某个块级容器下连续的行内子节点，即一个待翻译段落。
@@ -32,6 +32,11 @@ export function collectRuns(root: Element, classifier: DomClassifier, deep = tru
     };
 
     for (const child of Array.from(el.childNodes)) {
+      if (isParagraphBreak(child)) {
+        sawBlock = true;
+        flush();
+        continue;
+      }
       const kind = classifier.classify(child);
       if (kind === 'ignore') continue;
       if (kind === 'text' || kind === 'inline' || kind === 'opaque') {

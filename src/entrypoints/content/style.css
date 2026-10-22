@@ -11,6 +11,12 @@ ptx-t {
   overflow-wrap: anywhere;
 }
 
+/* 懒翻译锚点：空的行内元素，不占空间、不影响排版，只用于 IntersectionObserver */
+ptx-t.ptx-pending {
+  display: inline !important;
+  margin: 0 !important;
+}
+
 ptx-t.ptx-block {
   display: block !important;
   margin: 0.3em 0 0.1em !important;

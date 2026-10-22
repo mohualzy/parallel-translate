@@ -131,6 +131,29 @@ test('懒翻译：视口外的段落滚动到附近才请求', async () => {
   await page.close();
 });
 
+test('<br><br> 分段的文章：逐段对照，纯文本段落也只在滚动到附近时请求', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/essay.html`);
+  await toggle(page);
+
+  const views = page.locator('#essay > ptx-t:not(.ptx-pending)');
+  await expect(views.nth(0)).toContainText('【译】July 2023');
+  await expect(views.nth(1)).toContainText('【译】The first paragraph explains');
+  // 单个 <br> 仍属于同一段
+  await expect(views.nth(2)).toContainText('【译】The second paragraph has a footnote and continues');
+  await expect(views.nth(2)).toContainText('on a soft line break.');
+  await expect(views.nth(2).locator('br')).toHaveCount(1);
+  await expect(views.nth(2).locator('a[href="#note-1"]')).toHaveText('footnote');
+
+  const requestedFar = () => server.batches.flat().some((s) => s.includes('far paragraph'));
+  await page.waitForTimeout(500);
+  expect(requestedFar()).toBe(false);
+  await page.mouse.wheel(0, 4500);
+  await expect(views.nth(3)).toContainText('【译】The far paragraph should wait');
+  expect(requestedFar()).toBe(true);
+  await page.close();
+});
+
 test('动态内容：新插入的段落自动翻译，被页面删除的译文自动补回', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);
