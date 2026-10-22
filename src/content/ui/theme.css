@@ -1,0 +1,43 @@
+/*
+ * 页面内 UI（划词弹窗、悬浮球等）共享的主题。只在各组件的 Shadow Root 内生效，
+ * 网页样式进不来，这里的样式也不会泄漏到网页。
+ */
+
+:host {
+  --ptx-bg: #ffffff;
+  --ptx-surface: #f4f6f9;
+  --ptx-text: #1d2129;
+  --ptx-muted: #6b7280;
+  --ptx-border: #e3e6eb;
+  --ptx-accent: #2563eb;
+  --ptx-accent-soft: rgba(37, 99, 235, 0.12);
+  --ptx-on-accent: #ffffff;
+  --ptx-danger: #dc2626;
+  --ptx-shadow: 0 8px 28px rgba(16, 24, 40, 0.16), 0 1px 3px rgba(16, 24, 40, 0.08);
+  --ptx-font: system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host {
+    --ptx-bg: #1e2026;
+    --ptx-surface: #272a31;
+    --ptx-text: #e7e9ee;
+    --ptx-muted: #9aa1ad;
+    --ptx-border: #343841;
+    --ptx-accent: #5b8ff9;
+    --ptx-accent-soft: rgba(91, 143, 249, 0.18);
+    --ptx-on-accent: #0b1020;
+    --ptx-danger: #f87171;
+    --ptx-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
