@@ -143,6 +143,21 @@ describe('richtext', () => {
     expect(div.innerHTML).toBe('前未知<a href="/a">链接 <code>c</code> 后</a>');
   });
 
+  it('上下标、时间、图标字体原样保留：不进入 plain，译文中整体克隆', () => {
+    setup(
+      '<p>Water is H<sub>2</sub>O<sup><a href="#c1">[1]</a></sup>, updated <time>Oct 3</time> <span class="material-icons">search</span></p>',
+    );
+    const [run] = collectRuns(document.body, classifier);
+    const ser = serialize(run!.nodes, true, classifier);
+    expect(ser.text).toBe('Water is H<x0>2</x0>O<x1>[1]</x1>, updated <x2>Oct 3</x2> <x3>search</x3>');
+    expect(ser.plain).toBe('Water is HO, updated');
+    const div = document.createElement('div');
+    div.append(deserialize('水是 H<x0/>O<x1/>，更新于 <x2/> <x3>搜索</x3>', ser.refs, document));
+    expect(div.innerHTML).toBe(
+      '水是 H<sub>2</sub>O<sup><a href="#c1">[1]</a></sup>，更新于 <time>Oct 3</time> <span class="material-icons">search</span>',
+    );
+  });
+
   it('标签过多时降级为纯文本', () => {
     const links = Array.from({ length: 30 }, (_, i) => `<a href="#${i}">w${i}</a>`).join(' ');
     setup(`<p>${links}</p>`);

@@ -18,6 +18,8 @@ const IGNORED_TAGS = new Set(['script', 'style', 'noscript', 'template', 'link',
 const OPAQUE_TAGS = new Set([
   'code', 'kbd', 'samp', 'var', 'pre', 'textarea', 'input', 'select', 'option', 'button',
   'svg', 'math', 'canvas', 'video', 'audio', 'iframe', 'object', 'embed', 'img', 'picture', 'br', 'wbr',
+  // 上下标多是引用角标 [1]、化学式、指数，原样保留比翻译更准确
+  'sup', 'sub', 'time',
 ]);
 
 /** 这些标签几乎总是块级，跳过 getComputedStyle 以加快扫描 */
@@ -48,6 +50,15 @@ const BUILTIN_EXCLUDE = [
   '[role="tab"]',
   '[role="menuitem"]',
   '[role="switch"]',
+  // 图标字体靠文字连字显示图标（如 <span class="material-icons">search</span>），翻译会把图标变成文字
+  '.material-icons',
+  '.material-icons-outlined',
+  '.material-icons-round',
+  'material-icon',
+  '[class^="material-symbols-"]',
+  '.google-symbols',
+  'i.fa',
+  'i[class^="fa-"]',
 ];
 
 /** 只给屏幕阅读器的隐藏文字：看不见，翻译出来反而会显示在页面上 */

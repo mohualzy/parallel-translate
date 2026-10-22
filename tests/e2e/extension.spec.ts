@@ -103,6 +103,12 @@ test('整页翻译：段落出现译文，链接与行内代码保留，中文�
   // 视觉隐藏的读屏文字不进入译文；导航这类短界面文字不自动翻译
   await expect(translation(page, '#p-sr')).toHaveText('【译】Visible sentence here.');
   await expect(page.locator('#nav-home ptx-t')).toHaveCount(0);
+  // 上下标、图标字体原样克隆进译文，不交给模型改写
+  const cite = translation(page, '#p-cite');
+  await expect(cite).toContainText('【译】Water is H');
+  await expect(cite.locator('sub')).toHaveText('2');
+  await expect(cite.locator('sup a[href="#cite-1"]')).toHaveText('[1]');
+  await expect(cite.locator('.material-icons')).toHaveText('search');
 
   // 多段合并成一次请求
   expect(server.batches.some((b) => b.length > 1)).toBe(true);
