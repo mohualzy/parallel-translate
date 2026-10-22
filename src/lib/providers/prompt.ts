@@ -1,3 +1,4 @@
+import type { GlossaryEntry } from '../glossary';
 import { baseLang, getLanguage } from '../languages';
 import type { ChatMessage } from './types';
 
@@ -21,6 +22,17 @@ export interface PromptOptions {
   stylePrompt?: string;
   /** 页面标题，作为领域上下文帮助消歧 */
   title?: string;
+  /** 本批命中的用户术语 */
+  glossary?: GlossaryEntry[];
+}
+
+/** 术语表段落，追加在 system prompt 末尾；没有命中术语时为空 */
+export function glossarySection(entries: GlossaryEntry[] | undefined, zh: boolean): string {
+  if (!entries?.length) return '';
+  const lines = entries.map((e) => `- ${e.source} → ${e.target}`).join('\n');
+  return zh
+    ? `\n\n术语表（原文 → 必须使用的译法；译法与原文相同表示保持原文不译）：\n${lines}`
+    : `\n\nGlossary (source → required translation; identical means keep it untranslated):\n${lines}`;
 }
 
 function englishSystemPrompt(to: string, style: string): string {
@@ -65,7 +77,9 @@ export function buildMessages(segments: string[], opts: PromptOptions): ChatMess
   const zh = baseLang(opts.targetLang) === 'zh';
   const lang = getLanguage(opts.targetLang);
   const style = opts.stylePrompt?.trim() || defaultStylePrompt(opts.targetLang);
-  const system = zh ? chineseSystemPrompt(lang.name, style) : englishSystemPrompt(lang.englishName, style);
+  const system =
+    (zh ? chineseSystemPrompt(lang.name, style) : englishSystemPrompt(lang.englishName, style)) +
+    glossarySection(opts.glossary, zh);
 
   const body = segments.map((s, i) => `<s id="${i}">${s}</s>`).join('\n');
   const title = opts.title?.trim();
@@ -87,6 +101,7 @@ export interface SelectionPromptOptions {
   context?: string;
   /** 单词/短语：输出词典式释义；否则只输出译文 */
   word: boolean;
+  glossary?: GlossaryEntry[];
 }
 
 /** 选中的是不是「一个词」：单个拉丁/西里尔词（可含连字符、撇号），用于切换词典模式 */
@@ -119,7 +134,10 @@ export function buildSelectionMessages(text: string, opts: SelectionPromptOption
   const context = opts.context?.trim();
   const user = `${context ? `<context>${context}</context>\n` : ''}<text>${text}</text>`;
   return [
-    { role: 'system', content: selectionSystemPrompt(opts.word, zh, zh ? lang.name : lang.englishName) },
+    {
+      role: 'system',
+      content: selectionSystemPrompt(opts.word, zh, zh ? lang.name : lang.englishName) + glossarySection(opts.glossary, zh),
+    },
     { role: 'user', content: user },
   ];
 }

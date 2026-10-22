@@ -242,6 +242,25 @@ test('还原与缓存：关闭后译文全部移除，再次开启命中缓存�
   await page.close();
 });
 
+test('术语表：只把页面里出现的术语注入 prompt，改术语表后不复用旧缓存', async () => {
+  await setSettings({ glossary: 'fox = 狐狸君\nunicorn = 独角兽' });
+  try {
+    const page = await context.newPage();
+    await page.goto(`${server.url}/page.html`);
+    const before = server.batches.length;
+    await toggle(page);
+    await expect(translation(page, '#p-second')).toContainText('【译】The quick brown fox');
+    // p-second 之前已被缓存；带了术语后缓存键不同，必须重新请求
+    const index = server.batches.findIndex((b, i) => i >= before && b.some((s) => s.includes('quick brown fox')));
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect(server.systems[index]).toContain('- fox → 狐狸君');
+    expect(server.systems[index]).not.toContain('unicorn');
+    await page.close();
+  } finally {
+    await setSettings({ glossary: '' });
+  }
+});
+
 test('仅译文模式：隐藏原文，译文保持原字号', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);

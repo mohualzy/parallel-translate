@@ -159,6 +159,26 @@ test('真实模型：划词翻译，单词给出词典式释义，句子给出�
   await page.close();
 });
 
+test('真实模型：遵守术语表（故意指定不常见译法）', async () => {
+  test.setTimeout(120_000);
+  await sw.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({ settings: { ...(settings as object), glossary: 'fox = 狐仙' } });
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto(`${server.url}/page.html`);
+    await toggle(page);
+    await expect(translation(page, '#p-second')).toContainText('狐仙', { timeout: 60_000 });
+    await page.close();
+  } finally {
+    await sw.evaluate(async () => {
+      const { settings } = await chrome.storage.local.get('settings');
+      await chrome.storage.local.set({ settings: { ...(settings as object), glossary: '' } });
+    });
+  }
+});
+
 test('真实模型：设置页测试连接成功', async () => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/options.html`);

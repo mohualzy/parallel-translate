@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser';
 import { Semaphore, withRetry } from '@/lib/async';
 import { translateBatch } from '@/lib/batch';
+import { matchGlossary, parseGlossary, type GlossaryEntry } from '@/lib/glossary';
 import type { SelectionRequest, TranslateResult } from '@/lib/messages';
 import { buildMessages, createClient, HttpError, parseSegments, PROMPT_VERSION, type ChatMessage } from '@/lib/providers';
 import { buildSelectionMessages, SELECTION_PROMPT_VERSION, stripReasoning } from '@/lib/providers/prompt';
@@ -58,9 +59,11 @@ async function complete(provider: ProviderConfig, messages: ChatMessage[]): Prom
   );
 }
 
-function cacheKey(provider: ProviderConfig, settings: Settings, segment: string): Promise<string> {
+/** 缓存键包含该段命中的术语：改了术语表的译法，旧缓存自然失效 */
+function cacheKey(provider: ProviderConfig, settings: Settings, segment: string, glossary: GlossaryEntry[]): Promise<string> {
+  const terms = matchGlossary(glossary, [segment]).map((e) => [e.source, e.target]);
   return cache.sha256(
-    JSON.stringify([provider.baseURL, provider.model, settings.targetLang, PROMPT_VERSION, provider.prompt, segment]),
+    JSON.stringify([provider.baseURL, provider.model, settings.targetLang, PROMPT_VERSION, provider.prompt, terms, segment]),
   );
 }
 
@@ -77,7 +80,8 @@ async function requireProvider(): Promise<ProviderConfig> {
  */
 export async function translateSegments(segments: string[], title: string): Promise<TranslateResult> {
   const [settings, provider] = await Promise.all([getSettings(), requireProvider()]);
-  const keys = await Promise.all(segments.map((s) => cacheKey(provider, settings, s)));
+  const glossary = parseGlossary(settings.glossary);
+  const keys = await Promise.all(segments.map((s) => cacheKey(provider, settings, s, glossary)));
   const cached = await cache.getMany(keys);
   const translations = keys.map((k) => cached.get(k) ?? null);
   const missing = translations.flatMap((t, i) => (t === null ? [i] : []));
@@ -86,7 +90,12 @@ export async function translateSegments(segments: string[], title: string): Prom
   const prompt = { targetLang: settings.targetLang, stylePrompt: provider.prompt, title };
   const outcome = await translateBatch(
     missing.map((i) => segments[i]!),
-    async (batch) => parseSegments(await complete(provider, buildMessages(batch, prompt)), batch.length),
+    // 术语按实际发送的这一批匹配（补翻拆分后的小批次也只带自己用到的术语）
+    async (batch) =>
+      parseSegments(
+        await complete(provider, buildMessages(batch, { ...prompt, glossary: matchGlossary(glossary, batch) })),
+        batch.length,
+      ),
     { maxRecoveryRequests: MAX_RECOVERY_REQUESTS, describeError: (err) => describeError(err, provider) },
   );
   missing.forEach((i, j) => (translations[i] = outcome.translations[j] ?? null));
@@ -109,15 +118,31 @@ export async function translateSelection(
   signal: AbortSignal,
 ): Promise<string> {
   const [settings, provider] = await Promise.all([getSettings(), requireProvider()]);
+  const glossary = matchGlossary(parseGlossary(settings.glossary), [req.text]);
   const key = await cache.sha256(
-    JSON.stringify(['selection', provider.baseURL, provider.model, settings.targetLang, SELECTION_PROMPT_VERSION, req.word, req.context, req.text]),
+    JSON.stringify([
+      'selection',
+      provider.baseURL,
+      provider.model,
+      settings.targetLang,
+      SELECTION_PROMPT_VERSION,
+      glossary.map((e) => [e.source, e.target]),
+      req.word,
+      req.context,
+      req.text,
+    ]),
   );
   const hit = (await cache.getMany([key])).get(key);
   if (hit !== undefined) {
     onDelta(hit);
     return hit;
   }
-  const messages = buildSelectionMessages(req.text, { targetLang: settings.targetLang, context: req.context, word: req.word });
+  const messages = buildSelectionMessages(req.text, {
+    targetLang: settings.targetLang,
+    context: req.context,
+    word: req.word,
+    glossary,
+  });
   try {
     const raw = await keepAlive(() =>
       createClient(provider).complete(messages, AbortSignal.any([signal, AbortSignal.timeout(provider.timeoutMs)]), onDelta),
