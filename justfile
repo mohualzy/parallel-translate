@@ -26,6 +26,10 @@ check:
 e2e: build
     pnpm e2e
 
+# 用真实 DeepSeek API 实测（需要环境变量 DEEPSEEK_API_KEY，会产生少量费用）
+e2e-live: build
+    pnpm exec playwright test -c playwright.live.config.ts
+
 # 打包 zip
 zip:
     pnpm zip
