@@ -65,3 +65,21 @@
 ### 实测脚本的坑
 
 - GitHub 仓库改名后旧地址会重定向（`facebook/react` → `react/react`）。按导航前的 URL 找标签页会找不到，必须用 `page.url()` 取跳转后的地址。
+
+## 页面内 UI 与 Shadow DOM
+
+- WXT 的 `createShadowRootUi` 设置 `isolateEvents` 后，会在宿主上阻止按键事件冒泡。焦点在组件内部时，document 上监听不到 Esc，需要在 shadow root 内另外监听。
+- 事件从 shadow 树冒泡到 document 时，`target` 被重定向为宿主；判断事件是否来自扩展 UI 要看 `composedPath()`。
+- `<slot>` 默认是 `display: contents`，没有盒子，IntersectionObserver 永远不会报告它可见。容器是 `display: contents` 时，改为观察片段本身。
+- 页面级 CSS（manifest 注入）进不了 shadow root，插到 shadow 树里的 `<ptx-t>` 需要用 `adoptedStyleSheets` 补上样式。
+- MutationObserver 观察 document 时看不到 shadow 树内部的变化，每个遍历到的 shadow root 都要单独 `observe`。
+
+## iframe
+
+- `chrome.tabs.sendMessage` 不指定 `frameId` 时会发给所有 frame，Promise 取第一个回复。所以 iframe 一律不回复；需要状态时显式指定 `{ frameId: 0 }`。
+
+## 测试相关
+
+- happy-dom 不支持属性选择器的大小写标志（`[name="description" i]`），但 Chrome 支持；需要不区分大小写时手动比较。
+- Playwright 的 `dblclick()` / `click()` 默认点在元素中心。块级段落的中心可能已在文字末尾之外，选不中词；精确选词要用 Range。
+- 流式 UI 的完成判定不能看「不再是加载中」，要有明确的完成状态（划词弹窗用 `data-state="done"`）。
