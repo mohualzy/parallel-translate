@@ -39,6 +39,15 @@ const SETTLE_MS = 1000;
 /** 整页可翻译文字少于这个字数时提示「可能已是目标语言」 */
 const SAME_LANGUAGE_MAX_CHARS = 100;
 
+function isClipping(el: Element): boolean {
+  const cs = getComputedStyle(el);
+  if (/auto|scroll/.test(`${cs.overflowX} ${cs.overflowY}`)) return false;
+  const lineClamp = cs.webkitLineClamp !== '' && cs.webkitLineClamp !== 'none';
+  const hides = cs.overflowX !== 'visible' || cs.overflowY !== 'visible' || cs.textOverflow === 'ellipsis';
+  const overflowing = el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1;
+  return (lineClamp || hides) && overflowing;
+}
+
 /**
  * 页面翻译控制器：段落登记 → 进入视口排队 → 批量请求 → 渲染；
  * 监听 DOM 变化处理动态内容。对页面只做「追加 <ptx-t> + data-ptx-hide 属性」两种修改。
@@ -66,6 +75,10 @@ export class PageTranslator {
   private dirtyRoots = new Set<Element>();
   /** 我们自己删除的节点，MutationObserver 回调里据此忽略 */
   private ownRemovals = new WeakSet<Node>();
+  /** 待检查是否被截断的段落（下一帧批量读布局，避免逐段强制重排） */
+  private unclampQueue = new Set<Paragraph>();
+  /** 被解除截断的元素，关闭翻译时复原 */
+  private unclamped = new Set<Element>();
   /** 每个容器最近一次登记的整段段落，用于发现「同一位置的内容被改写」 */
   private lastByContainer = new WeakMap<Element, Paragraph>();
   /** 当前扫描是否由 DOM 变化触发（首次整页扫描不算） */
@@ -153,6 +166,10 @@ export class PageTranslator {
       this.reset();
       if (wasEnabled) this.enable();
       return;
+    }
+    if (prev.unclamp && !next.unclamp) {
+      for (const el of this.unclamped) el.removeAttribute('data-ptx-unclamp');
+      this.unclamped.clear();
     }
     if (prev.displayMode !== next.displayMode || prev.translationStyle !== next.translationStyle) {
       for (const p of this.paragraphs) if (p.state === 'done' && !p.dismissed && p.el?.isConnected) this.renderDone(p);
@@ -306,6 +323,9 @@ export class PageTranslator {
     this.queue = [];
     this.dirtyRoots.clear();
     this.lastByContainer = new WeakMap();
+    this.unclampQueue.clear();
+    for (const el of this.unclamped) el.removeAttribute('data-ptx-unclamp');
+    this.unclamped.clear();
   }
 
   // ---------- 懒翻译与批量请求 ----------
@@ -477,6 +497,7 @@ export class PageTranslator {
     inner.append(deserialize(p.translation, p.refs, document));
     el.replaceChildren(inner);
     this.applyHide(p, this.settings.displayMode === 'translation');
+    this.scheduleUnclamp(p);
   }
 
   private renderError(p: Paragraph) {
@@ -506,6 +527,32 @@ export class PageTranslator {
     container.removeAttribute('data-ptx-hide');
     p.el?.style.removeProperty('font-size');
     p.el?.style.removeProperty('line-height');
+  }
+
+  // ---------- 解除截断 ----------
+
+  private scheduleUnclamp(p: Paragraph) {
+    if (!this.settings.unclamp) return;
+    this.unclampQueue.add(p);
+    if (this.unclampQueue.size === 1) requestAnimationFrame(() => this.flushUnclamp());
+  }
+
+  /**
+   * 译文插入后，如果所在容器（及最多 5 层祖先）因省略号 / 行数限制 / 固定高度把内容裁掉了，
+   * 打上 data-ptx-unclamp，由 CSS 解除截断。可滚动容器是有意为之，不处理。
+   */
+  private flushUnclamp() {
+    const items = [...this.unclampQueue];
+    this.unclampQueue.clear();
+    for (const p of items) {
+      if (!p.el?.isConnected) continue;
+      let el: Element | null = p.container;
+      for (let depth = 0; el && el !== document.body && depth < 5; depth++, el = el.parentElement) {
+        if (this.unclamped.has(el) || !isClipping(el)) continue;
+        el.setAttribute('data-ptx-unclamp', '');
+        this.unclamped.add(el);
+      }
+    }
   }
 
   private removeView(p: Paragraph) {

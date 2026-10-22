@@ -24,6 +24,8 @@ export interface Settings {
   richText: boolean;
   /** 不自动翻译按钮、标签页、导航链接等短界面文字 */
   skipShortUI: boolean;
+  /** 译文被省略号 / 行数限制截断时解除容器截断 */
+  unclamp: boolean;
   /** 页面语言不是目标语言时自动翻译 */
   autoTranslateForeign: boolean;
   alwaysTranslateSites: string[];
@@ -66,6 +68,7 @@ export const DEFAULT_SETTINGS: Settings = {
   floatBallHiddenSites: [],
   richText: true,
   skipShortUI: true,
+  unclamp: true,
   autoTranslateForeign: false,
   alwaysTranslateSites: [],
   neverTranslateSites: [],

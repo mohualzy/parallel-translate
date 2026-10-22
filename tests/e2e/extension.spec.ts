@@ -298,6 +298,22 @@ test('同语言提示：页面已是目标语言时提示，不发请求；外�
   await foreign.close();
 });
 
+test('解除截断：省略号容器里的译文完整可见，关闭翻译后复原', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  const box = page.locator('#ellipsis-box');
+  await toggle(page);
+  await expect(translation(page, '#ellipsis-box')).toContainText('【译】This commit message');
+  await expect(box).toHaveAttribute('data-ptx-unclamp', '');
+  const clipped = await box.evaluate((el) => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1);
+  expect(clipped).toBe(false);
+
+  await toggle(page);
+  await expect(page.locator('ptx-t')).toHaveCount(0);
+  await expect(box).not.toHaveAttribute('data-ptx-unclamp', '');
+  await page.close();
+});
+
 test('术语表：只把页面里出现的术语注入 prompt，改术语表后不复用旧缓存', async () => {
   await setSettings({ glossary: 'fox = 狐狸君\nunicorn = 独角兽' });
   try {
