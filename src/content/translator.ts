@@ -24,10 +24,17 @@ interface Paragraph extends Run {
   dismissed: boolean;
   /** 被页面脚本删除后补回的次数，防止与页面无限拉锯 */
   restores: number;
+  /** 内容刚变化过的段落要等到这个时间点（ms）仍未再变，才发起翻译 */
+  settleAt?: number;
 }
 
 const MAX_INFLIGHT = 4;
 const MAX_RESTORES = 5;
+/**
+ * 段落内容变化后的稳定窗口。逐字输出的页面（AI 对话、实时日志）会持续改写同一段，
+ * 等它停下来再翻译，避免每次变化都发请求（见 docs/DECISIONS.md D13）。
+ */
+const SETTLE_MS = 1000;
 
 /**
  * 页面翻译控制器：段落登记 → 进入视口排队 → 批量请求 → 渲染；
@@ -54,6 +61,10 @@ export class PageTranslator {
   private dirtyRoots = new Set<Element>();
   /** 我们自己删除的节点，MutationObserver 回调里据此忽略 */
   private ownRemovals = new WeakSet<Node>();
+  /** 每个容器最近一次登记的整段段落，用于发现「同一位置的内容被改写」 */
+  private lastByContainer = new WeakMap<Element, Paragraph>();
+  /** 当前扫描是否由 DOM 变化触发（首次整页扫描不算） */
+  private dynamicScan = false;
 
   constructor(public settings: Settings) {
     this.classifier = new DomClassifier(buildExcludeSelector(settings.excludeSelectors));
@@ -141,11 +152,16 @@ export class PageTranslator {
 
   // ---------- 段落登记 ----------
 
-  private scan(roots: Element[]) {
+  private scan(roots: Element[], dynamic = false) {
     this.classifier.reset();
-    for (const root of roots) {
-      if (!root.isConnected || this.classifier.isInsideExcluded(root)) continue;
-      for (const run of collectRuns(root, this.classifier)) this.register(run);
+    this.dynamicScan = dynamic;
+    try {
+      for (const root of roots) {
+        if (!root.isConnected || this.classifier.isInsideExcluded(root)) continue;
+        for (const run of collectRuns(root, this.classifier)) this.register(run);
+      }
+    } finally {
+      this.dynamicScan = false;
     }
   }
 
@@ -188,6 +204,12 @@ export class PageTranslator {
       dismissed: false,
       restores: 0,
     };
+    // 内容被改写：原有节点变了文本，或同一容器里的整段被换成了新内容
+    const previous = run.whole ? this.lastByContainer.get(run.container) : undefined;
+    const rewritten = olds.size > 0 || (this.dynamicScan && previous !== undefined && previous.source !== ser.text);
+    if (rewritten) p.settleAt = Date.now() + SETTLE_MS;
+    if (run.whole) this.lastByContainer.set(run.container, p);
+
     this.paragraphs.add(p);
     for (const n of run.nodes) this.byNode.set(n, p);
     if (this.enabled) this.observe(p);
@@ -230,6 +252,7 @@ export class PageTranslator {
     this.targets.clear();
     this.queue = [];
     this.dirtyRoots.clear();
+    this.lastByContainer = new WeakMap();
   }
 
   // ---------- 懒翻译与批量请求 ----------
@@ -253,9 +276,23 @@ export class PageTranslator {
       this.targets.delete(entry.target);
       this.io?.unobserve(entry.target);
       for (const p of set) {
-        if (p.state === 'idle' && !p.dismissed && this.paragraphs.has(p)) this.enqueue(p);
+        if (p.state === 'idle' && !p.dismissed && this.paragraphs.has(p)) this.enqueueWhenSettled(p);
       }
     }
+  }
+
+  /** 内容仍在变化的段落延后入队；期间再变化会产生新段落、旧段落被丢弃，计时器随之失效 */
+  private enqueueWhenSettled(p: Paragraph) {
+    const wait = (p.settleAt ?? 0) - Date.now();
+    if (wait <= 0) {
+      this.enqueue(p);
+      return;
+    }
+    const generation = this.generation;
+    setTimeout(() => {
+      if (generation !== this.generation || !this.paragraphs.has(p)) return;
+      if (p.state === 'idle' && !p.dismissed) this.enqueueWhenSettled(p);
+    }, wait);
   }
 
   private enqueue(p: Paragraph, urgent = false) {
@@ -472,7 +509,7 @@ export class PageTranslator {
       for (let a = b.parentElement; a; a = a.parentElement) if (blocks.has(a)) return false;
       return true;
     });
-    this.scan(outermost);
+    this.scan(outermost, true);
     this.prune();
   }
 }

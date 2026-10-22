@@ -152,6 +152,33 @@ test('动态内容：新插入的段落自动翻译，被页面删除的译文�
   await page.close();
 });
 
+test('持续变化的段落：内容稳定后才翻译，不会每次变化都请求', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  await toggle(page);
+  await expect(translation(page, '#title')).toBeVisible();
+
+  const sentence = 'Streaming answer grows word by word until it is finally complete.';
+  // 模拟 AI 对话逐字输出：每 150ms 改写一次段落内容
+  await page.evaluate(async (text) => {
+    const words = text.split(' ');
+    const p = document.createElement('p');
+    p.id = 'p-stream';
+    document.querySelector('#title')!.after(p);
+    for (let i = 1; i <= words.length; i++) {
+      p.textContent = words.slice(0, i).join(' ');
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  }, sentence);
+
+  await expect(translation(page, '#p-stream')).toHaveText(`【译】${sentence}`);
+  // 最多两次：段落刚出现时的第一版 + 稳定后的最终版
+  const requested = server.batches.flat().filter((s) => s.startsWith('Streaming'));
+  expect(requested.length).toBeLessThanOrEqual(2);
+  expect(requested.at(-1)).toBe(sentence);
+  await page.close();
+});
+
 test('批内去重与漏段补翻：相同段落只发送一次，被模型漏掉的段单独补翻', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);
