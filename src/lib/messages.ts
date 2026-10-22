@@ -61,7 +61,12 @@ export type SelectionEvent =
 
 // ---------- 弹窗 / background → 页面 ----------
 
-export type TabRequest = { type: 'toggle' } | { type: 'toggle-display-mode' } | { type: 'get-state' };
+export type TabRequest =
+  | { type: 'toggle' }
+  | { type: 'translate-whole-page' }
+  | { type: 'toggle-display-mode' }
+  | { type: 'toggle-mask' }
+  | { type: 'get-state' };
 
 export interface TabState {
   enabled: boolean;

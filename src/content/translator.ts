@@ -93,7 +93,31 @@ export class PageTranslator {
   }
 
   disable() {
+    document.documentElement.removeAttribute('data-ptx-mask');
     this.reset();
+  }
+
+  /**
+   * 立即翻译整页（Alt+W）：不等段落进入视口，已识别的段落全部按文档顺序排队。
+   * 已在翻译时再按一次则还原。之后动态出现的内容仍按懒翻译处理。
+   */
+  translateWholePage() {
+    if (this.enabled) {
+      this.disable();
+      return;
+    }
+    this.enable();
+    for (const p of this.paragraphs) {
+      if (p.state === 'idle' && !p.dismissed) this.enqueueWhenSettled(p);
+    }
+  }
+
+  /** 学习遮罩：译文模糊、悬停才显示，只对当前页生效；页面未翻译时顺便开启翻译 */
+  toggleMask() {
+    const root = document.documentElement;
+    const on = !root.hasAttribute('data-ptx-mask');
+    root.toggleAttribute('data-ptx-mask', on);
+    if (on && !this.enabled) this.enable();
   }
 
   toggle() {

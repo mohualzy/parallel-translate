@@ -245,6 +245,40 @@ test('还原与缓存：关闭后译文全部移除，再次开启命中缓存�
   await page.close();
 });
 
+async function command(page: Page, type: 'translate-whole-page' | 'toggle-mask' | 'toggle-display-mode') {
+  await sw.evaluate(
+    async ({ target, type }) => {
+      const tab = (await chrome.tabs.query({})).find((t) => t.url === target);
+      await chrome.tabs.sendMessage(tab!.id!, { type });
+    },
+    { target: page.url(), type },
+  );
+}
+
+test('快捷键：Alt+W 立即翻译整页（不等滚动），再按还原；学习遮罩模糊译文', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  await toggle(page); // 先确认内容脚本就绪，再还原
+  await toggle(page);
+  await expect(page.locator('ptx-t')).toHaveCount(0);
+
+  await command(page, 'translate-whole-page');
+  // 视口外的段落也被翻译
+  await expect(translation(page, '#p-far')).toContainText('【译】This paragraph is far below the fold.');
+  await command(page, 'translate-whole-page');
+  await expect(page.locator('ptx-t')).toHaveCount(0);
+
+  await command(page, 'toggle-mask');
+  await expect(page.locator('html')).toHaveAttribute('data-ptx-mask', '');
+  const title = translation(page, '#title').locator('ptx-i');
+  await expect(title).toContainText('【译】');
+  expect(await title.evaluate((el) => getComputedStyle(el).filter)).toBe('blur(5px)');
+  await command(page, 'toggle-mask');
+  await expect(page.locator('html')).not.toHaveAttribute('data-ptx-mask', '');
+  expect(await title.evaluate((el) => getComputedStyle(el).filter)).toBe('none');
+  await page.close();
+});
+
 test('术语表：只把页面里出现的术语注入 prompt，改术语表后不复用旧缓存', async () => {
   await setSettings({ glossary: 'fox = 狐狸君\nunicorn = 独角兽' });
   try {

@@ -16,9 +16,17 @@ export default defineConfig({
         suggested_key: { default: 'Alt+A' },
         description: '翻译 / 还原当前页面',
       },
-      'toggle-display-mode': {
+      // Alt+W 立即翻译整页（不等滚动到）
+      'translate-whole-page': {
         suggested_key: { default: 'Alt+W' },
+        description: '立即翻译整页 / 还原',
+      },
+      // 以下不设默认按键，避免与网页或其他扩展冲突，可在 chrome://extensions/shortcuts 自行绑定
+      'toggle-display-mode': {
         description: '切换双语对照 / 仅译文',
+      },
+      'toggle-mask': {
+        description: '切换学习遮罩（译文模糊，悬停显示）',
       },
     },
   },

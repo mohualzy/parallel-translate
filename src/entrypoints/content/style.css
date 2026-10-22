@@ -65,6 +65,16 @@ ptx-t.ptx-style-blur:hover > ptx-i {
   filter: none;
 }
 
+/* 学习遮罩（快捷键切换，只对当前页）：不论选了哪种译文样式，都先模糊，悬停再看 */
+html[data-ptx-mask] ptx-t:not(.ptx-loading):not(.ptx-error) > ptx-i {
+  filter: blur(5px);
+  transition: filter 0.2s;
+}
+
+html[data-ptx-mask] ptx-t:hover > ptx-i {
+  filter: none;
+}
+
 /* ---------- 状态 ---------- */
 
 ptx-spin {

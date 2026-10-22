@@ -126,7 +126,7 @@ async function init() {
 
   const commands = await browser.commands.getAll();
   const key = (name: string) => commands.find((c) => c.name === name)?.shortcut || '未设置';
-  $('#shortcut-hint').textContent = `翻译 ${key('toggle-translate')} · 切换显示 ${key('toggle-display-mode')}`;
+  $('#shortcut-hint').textContent = `翻译 ${key('toggle-translate')} · 整页 ${key('translate-whole-page')}`;
 
   renderState(await queryState());
   // 弹窗打开期间刷新进度

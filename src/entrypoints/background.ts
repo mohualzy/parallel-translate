@@ -50,8 +50,14 @@ export default defineBackground(() => {
   });
 
   browser.commands.onCommand.addListener((command, tab) => {
-    if (command === 'toggle-translate') void sendToActiveTab({ type: 'toggle' }, tab?.id);
-    if (command === 'toggle-display-mode') void sendToActiveTab({ type: 'toggle-display-mode' }, tab?.id);
+    const requests: Record<string, TabRequest> = {
+      'toggle-translate': { type: 'toggle' },
+      'translate-whole-page': { type: 'translate-whole-page' },
+      'toggle-display-mode': { type: 'toggle-display-mode' },
+      'toggle-mask': { type: 'toggle-mask' },
+    };
+    const request = requests[command];
+    if (request) void sendToActiveTab(request, tab?.id);
   });
 
   // 划词翻译：长连接流式推送；页面断开（关闭弹窗、换选区）时中止请求

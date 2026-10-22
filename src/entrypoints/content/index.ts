@@ -41,6 +41,8 @@ export default defineContentScript({
 
     browser.runtime.onMessage.addListener((request: TabRequest, _sender, sendResponse) => {
       if (request.type === 'toggle') translator.toggle();
+      if (request.type === 'translate-whole-page') translator.translateWholePage();
+      if (request.type === 'toggle-mask') translator.toggleMask();
       if (request.type === 'toggle-display-mode') {
         const displayMode = translator.settings.displayMode === 'bilingual' ? 'translation' : 'bilingual';
         void saveSettings({ displayMode });
