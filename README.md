@@ -57,6 +57,7 @@ Reason: 构建 Chrome/Edge 版到 `.output/chrome-mv3`
 - **某些页面无法翻译**：浏览器内置页面（`chrome://`）、扩展商店不允许扩展运行。
 - **按钮、导航没有被翻译**：默认跳过短的界面文字，避免撑乱布局。需要时可以悬停按 Ctrl 单独翻译，或在设置里关闭「跳过按钮、标签页、导航链接等短界面文字」。
 - **Ollama 返回 403**：Ollama 默认拒绝来自扩展的请求，启动前设置环境变量 `OLLAMA_ORIGINS=chrome-extension://*`。
+- **DeepSeek**：当前模型是 `deepseek-flash` / `deepseek-v4-pro`，默认会推理。预设已自动填好 `{"thinking": {"type": "disabled"}}`，实测输出 token 减少约 75%；手动添加时记得加上。
 - **推理模型太慢、太贵**：在「高级选项 → 额外请求参数」里关闭思考，参数名因服务而异，例如通义 `{"enable_thinking": false}`、Ollama `{"think": false}`、OpenAI `{"reasoning_effort": "minimal"}`，以服务商文档为准。
 - **偶尔有段落漏翻**：弱模型可能漏掉批量中的个别段落，扩展会自动逐段补翻；仍失败时点击重试，或在设置里调小「每次请求最多段落数」。
 - **费用**：只有滚动到的段落才会请求；已翻译内容缓存在本机，重复访问不计费。
@@ -79,3 +80,8 @@ Reason: 类型检查 + 单元测试 + 构建
 just e2e
 ```
 Reason: 加载真实扩展、用本地 mock 模型服务跑端到端测试
+
+```bash
+just e2e-live
+```
+Reason: 用真实 DeepSeek API 验证模型遵守分段/占位协议（需要环境变量 `DEEPSEEK_API_KEY`，会产生几分钱费用；未设置时自动跳过）

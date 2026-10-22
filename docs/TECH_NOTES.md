@@ -53,3 +53,15 @@
 - TypeScript 7（原生实现）与 WXT 0.21 生成的 tsconfig 兼容，`tsc --noEmit` 可用。
 - WXT 0.21 中 `vite` 是 peer dependency，需要显式安装。
 - justfile 在 Windows 上用 `powershell.exe` 执行（`set windows-shell`）。
+
+## 真实模型
+
+### DeepSeek（2026-10-22 实测）
+
+- `/v1/models` 返回 `deepseek-flash`、`deepseek-v4-pro`，旧的 `deepseek-chat` 不在列表里；两者都带 `effort` 字段，默认 `high`，即默认推理。
+- 关闭推理用 `{"thinking": {"type": "disabled"}}`；`reasoning_effort: "low"` 并不会减少推理 token。
+- 关闭推理后，分段协议（`<s id>`）与占位标签（`<gN>`、`<xN>`）遵守良好，测试页和 Wikipedia、HN、GitHub、paulgraham.com 上均无漏段、无标签残留。
+
+### 实测脚本的坑
+
+- GitHub 仓库改名后旧地址会重定向（`facebook/react` → `react/react`）。按导航前的 URL 找标签页会找不到，必须用 `page.url()` 取跳转后的地址。
