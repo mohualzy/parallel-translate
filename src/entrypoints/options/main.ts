@@ -2,7 +2,7 @@ import '@/ui/base.css';
 import './style.css';
 import { browser } from 'wxt/browser';
 import { sendToBackground } from '@/lib/messages';
-import { DEFAULT_STYLE_PROMPT } from '@/lib/providers/prompt';
+import { defaultStylePrompt } from '@/lib/providers/prompt';
 import {
   createProvider,
   DEFAULT_SETTINGS,
@@ -133,7 +133,7 @@ function initProviders() {
     PROVIDER_PRESETS.map((p, i) => [String(i), p.label]),
     '0',
   );
-  field<HTMLTextAreaElement>('prompt').placeholder = DEFAULT_STYLE_PROMPT;
+  field<HTMLTextAreaElement>('prompt').placeholder = defaultStylePrompt(settings.targetLang);
 
   form.addEventListener('input', () => (dirty = true));
 

@@ -1,14 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { buildMessages, DEFAULT_STYLE_PROMPT, parseSegments } from '@/lib/providers/prompt';
+import { buildMessages, DEFAULT_STYLE_PROMPT, DEFAULT_STYLE_PROMPT_ZH, parseSegments } from '@/lib/providers/prompt';
 
 describe('buildMessages', () => {
-  it('把多段编号拼进 user 消息，目标语言写进 system', () => {
+  it('目标为中文时用中文 prompt，多段编号拼进 user 消息', () => {
     const [system, user] = buildMessages(['Hello', 'World'], { targetLang: 'zh-CN', title: 'My Page' });
     expect(system?.role).toBe('system');
-    expect(system?.content).toContain('Simplified Chinese');
-    expect(system?.content).toContain(DEFAULT_STYLE_PROMPT);
-    expect(user?.content).toContain('Page title (context only, do not translate): My Page');
+    expect(system?.content).toContain('简体中文母语译者');
+    expect(system?.content).toContain('不要索要更多上下文');
+    expect(system?.content).toContain(DEFAULT_STYLE_PROMPT_ZH);
+    expect(user?.content).toContain('网页标题（仅供参考，不要翻译）：My Page');
     expect(user?.content).toContain('<s id="0">Hello</s>\n<s id="1">World</s>');
+  });
+
+  it('其他目标语言用英文 prompt', () => {
+    const [system, user] = buildMessages(['Hallo'], { targetLang: 'en', title: 'Seite' });
+    expect(system?.content).toContain('native English translator');
+    expect(system?.content).toContain('never ask for more context');
+    expect(system?.content).toContain(DEFAULT_STYLE_PROMPT);
+    expect(user?.content).toContain('Page title (context only, do not translate): Seite');
   });
 
   it('自定义风格要求替换默认值，格式约束仍然保留', () => {
