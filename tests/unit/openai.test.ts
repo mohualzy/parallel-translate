@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createOpenAIClient, endpoint, parseSSELine } from '@/lib/providers/openai';
+import { createOpenAIClient, endpoint, parseExtraBody, parseSSELine } from '@/lib/providers/openai';
 import { HttpError } from '@/lib/providers/types';
 import { createProvider } from '@/lib/settings';
 
@@ -58,6 +58,25 @@ describe('createOpenAIClient', () => {
     expect(url).toBe('https://api.example.com/v1/chat/completions');
     expect(init.headers.Authorization).toBe('Bearer test-key');
     expect(JSON.parse(init.body)).toMatchObject({ model: 'm', stream: true });
+  });
+
+  it('额外请求参数合并进请求体，可覆盖 temperature，不能覆盖 model/stream', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ choices: [{ message: { content: 'ok' } }] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const extraBody = '{"enable_thinking": false, "temperature": 0.1, "model": "hijack", "stream": false}';
+    await createOpenAIClient({ ...provider, extraBody }).complete([], new AbortController().signal);
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toMatchObject({
+      enable_thinking: false,
+      temperature: 0.1,
+      model: 'm',
+      stream: true,
+    });
+  });
+
+  it('额外请求参数不是 JSON 对象时给出可读错误', () => {
+    expect(parseExtraBody('')).toEqual({});
+    expect(() => parseExtraBody('{bad')).toThrow('不是合法的 JSON');
+    expect(() => parseExtraBody('[1]')).toThrow('必须是 JSON 对象');
   });
 
   it('请求流式但服务返回 JSON 时也能解析', async () => {

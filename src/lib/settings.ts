@@ -40,6 +40,8 @@ export interface ProviderConfig {
   stream: boolean;
   /** 自定义翻译风格要求，留空使用默认；格式约束由程序固定追加，用户改不坏 */
   prompt: string;
+  /** 合并进请求体的额外参数（JSON 对象文本），如 {"enable_thinking": false} */
+  extraBody: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -92,6 +94,7 @@ export function createProvider(preset?: ProviderPreset): ProviderConfig {
     timeoutMs: 90_000,
     stream: true,
     prompt: '',
+    extraBody: '',
   };
 }
 

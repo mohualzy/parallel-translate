@@ -2,6 +2,7 @@ import '@/ui/base.css';
 import './style.css';
 import { browser } from 'wxt/browser';
 import { sendToBackground } from '@/lib/messages';
+import { parseExtraBody } from '@/lib/providers/openai';
 import { defaultStylePrompt } from '@/lib/providers/prompt';
 import {
   createProvider,
@@ -74,6 +75,7 @@ function fillForm(p: ProviderConfig) {
   field('timeoutSec').value = String(Math.round(p.timeoutMs / 1000));
   field('stream').checked = p.stream;
   field<HTMLTextAreaElement>('prompt').value = p.prompt;
+  field<HTMLTextAreaElement>('extraBody').value = p.extraBody;
   const preset = PROVIDER_PRESETS.find((x) => x.baseURL && x.baseURL === p.baseURL);
   field('model').placeholder = preset?.modelHint ? `例如 ${preset.modelHint}` : '模型名';
   $('#model-list').replaceChildren();
@@ -100,6 +102,7 @@ function readForm(): ProviderConfig {
     timeoutMs: Math.max(10, num('timeoutSec', base.timeoutMs / 1000)) * 1000,
     stream: field('stream').checked,
     prompt: field<HTMLTextAreaElement>('prompt').value.trim(),
+    extraBody: field<HTMLTextAreaElement>('extraBody').value.trim(),
   };
 }
 
@@ -152,6 +155,12 @@ function initProviders() {
     const next = readForm();
     if (!next.baseURL || !next.model) {
       toast('请填写接口地址和模型名');
+      return;
+    }
+    try {
+      parseExtraBody(next.extraBody);
+    } catch (err) {
+      toast((err as Error).message);
       return;
     }
     providers = providers.map((p) => (p.id === next.id ? next : p));

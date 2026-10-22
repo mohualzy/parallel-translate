@@ -88,6 +88,11 @@
                 <textarea name="prompt" rows="4" id="prompt-input"></textarea>
                 <small class="muted">输出格式约束由程序自动追加，这里只需写风格要求，例如「技术文档风格，API 名称保留英文」。</small>
               </label>
+              <label class="field">
+                <span>额外请求参数（JSON，合并进请求体）</span>
+                <textarea name="extraBody" rows="2" spellcheck="false" placeholder='{"enable_thinking": false}'></textarea>
+                <small class="muted">用于关闭推理模型的思考以提速省钱，参数名因服务而异：通义 enable_thinking、Ollama think、OpenAI reasoning_effort 等。</small>
+              </label>
             </details>
 
             <div class="actions">

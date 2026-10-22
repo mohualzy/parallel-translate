@@ -76,6 +76,24 @@ async function readEventStream(body: ReadableStream<Uint8Array>): Promise<string
   return output;
 }
 
+/**
+ * 解析用户填写的额外请求参数。必须是 JSON 对象；空字符串视为没有。
+ * 用途：关闭推理模型的思考（enable_thinking / think / reasoning_effort）、Ollama 的 keep_alive 等。
+ */
+export function parseExtraBody(text: string): Record<string, unknown> {
+  if (!text.trim()) return {};
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error('额外请求参数不是合法的 JSON');
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('额外请求参数必须是 JSON 对象，例如 {"enable_thinking": false}');
+  }
+  return value as Record<string, unknown>;
+}
+
 export function createOpenAIClient(config: ProviderConfig): LLMClient {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   // Ollama 等本地服务可以不填 Key
@@ -87,10 +105,12 @@ export function createOpenAIClient(config: ProviderConfig): LLMClient {
         method: 'POST',
         headers,
         signal,
+        // 额外参数可以覆盖 temperature，但不能覆盖协议必需的 model / messages / stream
         body: JSON.stringify({
+          temperature: config.temperature,
+          ...parseExtraBody(config.extraBody),
           model: config.model,
           messages,
-          temperature: config.temperature,
           stream: config.stream,
         }),
       });
