@@ -105,6 +105,8 @@ const PROSE_CONTAINERS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'bloc
 export function looksLikeUIChrome(container: Element, nodes: Node[], plain: string): boolean {
   if (PROSE_CONTAINERS.has(container.localName)) return false;
   if (wordCount(plain) > 3 || plain.length > 30) return false;
+  // 文章正文里的短列表项、短链接是内容（如 README 的目录列表），不是界面
+  if (container.closest('article,[role="article"]')) return false;
   if (container.closest(UI_ANCESTORS)) return true;
   // 整段内容就是一个链接/按钮，如 <li><a>Home</a></li>、<div><a><svg/> Readme</a></div>
   const meaningful = nodes.filter((n) => n.textContent?.trim());

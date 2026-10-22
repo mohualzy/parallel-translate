@@ -104,6 +104,7 @@ describe('looksLikeUIChrome', () => {
       <div id="plain-div">Fork</div>
       <h3 id="heading"><a href="#">Fork</a></h3>
       <div style="display:flex"><div id="long">This is a full sentence with many words.</div></div>
+      <article><ul><li id="article-li"><a href="#">Quick Start</a></li></ul></article>
     `);
     const ui = (id: string) => {
       const el = document.getElementById(id)!;
@@ -116,6 +117,7 @@ describe('looksLikeUIChrome', () => {
     expect(ui('plain-div')).toBe(false);
     expect(ui('heading')).toBe(false);
     expect(ui('long')).toBe(false);
+    expect(ui('article-li')).toBe(false);
   });
 });
 
