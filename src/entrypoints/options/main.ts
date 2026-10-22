@@ -15,7 +15,7 @@ import {
   type ProviderConfig,
   type Settings,
 } from '@/lib/settings';
-import { $, fillSelect, hoverKeyOptions, languageOptions, styleOptions } from '@/ui/labels';
+import { $, fillSelect, hoverKeyOptions, languageOptions, selectionModeOptions, styleOptions } from '@/ui/labels';
 
 let providers: ProviderConfig[] = [];
 let settings: Settings;
@@ -243,6 +243,7 @@ function initPreferences() {
   fillSelect($<HTMLSelectElement>('#pref-target'), languageOptions(), settings.targetLang);
   fillSelect($<HTMLSelectElement>('#pref-style'), styleOptions(), settings.translationStyle);
   fillSelect($<HTMLSelectElement>('#pref-hover'), hoverKeyOptions(), settings.hoverKey);
+  fillSelect($<HTMLSelectElement>('#pref-selection'), selectionModeOptions(), settings.selectionMode);
 
   for (const el of document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('[data-setting]')) {
     const key = el.dataset.setting as keyof Settings;

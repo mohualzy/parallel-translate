@@ -13,6 +13,8 @@ export interface MockServer {
   batches: string[][];
   /** 非空时下一批请求都返回该状态码 */
   failWith: number | null;
+  /** 划词翻译请求：选中文本、是否词典模式、带上的语境 */
+  selections: { text: string; word: boolean; context: string }[];
   /** 多段请求时故意漏掉匹配的段，模拟模型漏段 */
   dropWhen: ((segment: string) => boolean) | null;
   close(): Promise<void>;
@@ -34,7 +36,7 @@ function extractSegments(content: string): string[] {
 }
 
 export async function startMockServer(): Promise<MockServer> {
-  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], failWith: null, dropWhen: null };
+  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], selections: [], failWith: null, dropWhen: null };
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -65,8 +67,18 @@ export async function startMockServer(): Promise<MockServer> {
       const body = JSON.parse(await readBody(req));
       const user = body.messages.at(-1).content as string;
       const segments = extractSegments(user);
-      state.batches.push(segments);
-      const output = segments
+      // 划词翻译：<text> 包着选中文本
+      const selected = segments.length === 0 ? /<text>([\s\S]*?)<\/text>/.exec(user)?.[1] : undefined;
+      if (selected !== undefined) {
+        state.selections.push({
+          text: selected,
+          word: (body.messages[0].content as string).includes('词典'),
+          context: /<context>([\s\S]*?)<\/context>/.exec(user)?.[1] ?? '',
+        });
+      } else {
+        state.batches.push(segments);
+      }
+      const output = selected !== undefined ? `${PREFIX}${selected}` : segments
         .map((s, i) => (segments.length > 1 && state.dropWhen?.(s) ? '' : `<s id="${i}">${PREFIX}${s}</s>`))
         .join('\n');
 

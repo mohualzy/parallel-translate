@@ -1,8 +1,9 @@
 import { browser } from 'wxt/browser';
 import { Semaphore, withRetry } from '@/lib/async';
 import { translateBatch } from '@/lib/batch';
-import type { TranslateResult } from '@/lib/messages';
+import type { SelectionRequest, TranslateResult } from '@/lib/messages';
 import { buildMessages, createClient, HttpError, parseSegments, PROMPT_VERSION, type ChatMessage } from '@/lib/providers';
+import { buildSelectionMessages, SELECTION_PROMPT_VERSION, stripReasoning } from '@/lib/providers/prompt';
 import { getActiveProvider, getSettings, type ProviderConfig, type Settings } from '@/lib/settings';
 import * as cache from './cache';
 
@@ -96,6 +97,38 @@ export async function translateSegments(segments: string[], title: string): Prom
   });
   await cache.setMany(fresh).catch(() => undefined); // 缓存写失败不影响本次翻译
   return { translations, error: outcome.error };
+}
+
+/**
+ * 划词翻译：单次流式请求，边收边推给页面。
+ * 用户主动触发、需要立刻看到结果，所以不排在网页批量翻译的并发队列后面，也不重试（流到一半重试会重复输出）。
+ */
+export async function translateSelection(
+  req: SelectionRequest,
+  onDelta: (delta: string) => void,
+  signal: AbortSignal,
+): Promise<string> {
+  const [settings, provider] = await Promise.all([getSettings(), requireProvider()]);
+  const key = await cache.sha256(
+    JSON.stringify(['selection', provider.baseURL, provider.model, settings.targetLang, SELECTION_PROMPT_VERSION, req.word, req.context, req.text]),
+  );
+  const hit = (await cache.getMany([key])).get(key);
+  if (hit !== undefined) {
+    onDelta(hit);
+    return hit;
+  }
+  const messages = buildSelectionMessages(req.text, { targetLang: settings.targetLang, context: req.context, word: req.word });
+  try {
+    const raw = await keepAlive(() =>
+      createClient(provider).complete(messages, AbortSignal.any([signal, AbortSignal.timeout(provider.timeoutMs)]), onDelta),
+    );
+    const text = stripReasoning(raw).trim();
+    if (!text) throw new Error('模型返回了空内容');
+    await cache.setMany([[key, text]]).catch(() => undefined);
+    return text;
+  } catch (err) {
+    throw new Error(describeError(err, provider));
+  }
 }
 
 export async function testProvider(provider: ProviderConfig): Promise<{ text: string; ms: number }> {

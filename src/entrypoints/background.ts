@@ -1,8 +1,16 @@
 import { browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
 import * as cache from '@/background/cache';
-import { listModels, testProvider, translateSegments } from '@/background/translate';
-import type { BackgroundRequest, BackgroundResponses, Envelope, TabRequest } from '@/lib/messages';
+import { listModels, testProvider, translateSegments, translateSelection } from '@/background/translate';
+import {
+  SELECTION_PORT,
+  type BackgroundRequest,
+  type BackgroundResponses,
+  type Envelope,
+  type SelectionEvent,
+  type SelectionRequest,
+  type TabRequest,
+} from '@/lib/messages';
 
 const MENU_TOGGLE = 'ptx-toggle';
 
@@ -44,6 +52,22 @@ export default defineBackground(() => {
   browser.commands.onCommand.addListener((command, tab) => {
     if (command === 'toggle-translate') void sendToActiveTab({ type: 'toggle' }, tab?.id);
     if (command === 'toggle-display-mode') void sendToActiveTab({ type: 'toggle-display-mode' }, tab?.id);
+  });
+
+  // 划词翻译：长连接流式推送；页面断开（关闭弹窗、换选区）时中止请求
+  browser.runtime.onConnect.addListener((port) => {
+    if (port.name !== SELECTION_PORT) return;
+    const controller = new AbortController();
+    const send = (event: SelectionEvent) => {
+      if (!controller.signal.aborted) port.postMessage(event);
+    };
+    port.onDisconnect.addListener(() => controller.abort());
+    port.onMessage.addListener((request: SelectionRequest) => {
+      translateSelection(request, (delta) => send({ type: 'delta', delta }), controller.signal).then(
+        (text) => send({ type: 'done', text }),
+        (err: unknown) => send({ type: 'error', error: err instanceof Error ? err.message : String(err) }),
+      );
+    });
   });
 
   // 用 sendResponse + return true 的写法，兼容所有 Chromium 版本与 Firefox

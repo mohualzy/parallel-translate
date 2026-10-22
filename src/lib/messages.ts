@@ -36,6 +36,22 @@ export async function sendToBackground<R extends BackgroundRequest>(
   return res.data;
 }
 
+// ---------- 划词翻译：长连接流式返回 ----------
+
+/** 划词翻译用 runtime.connect 长连接：能逐段推送译文；页面关闭弹窗即断开，后台随之中止请求 */
+export const SELECTION_PORT = 'ptx-selection';
+
+export interface SelectionRequest {
+  text: string;
+  context: string;
+  word: boolean;
+}
+
+export type SelectionEvent =
+  | { type: 'delta'; delta: string }
+  | { type: 'done'; text: string }
+  | { type: 'error'; error: string };
+
 // ---------- 弹窗 / background → 页面 ----------
 
 export type TabRequest = { type: 'toggle' } | { type: 'toggle-display-mode' } | { type: 'get-state' };

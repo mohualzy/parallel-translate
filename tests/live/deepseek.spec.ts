@@ -120,6 +120,45 @@ test('真实模型：<br><br> 分段的文章逐段翻译', async () => {
   await page.close();
 });
 
+test('真实模型：划词翻译，单词给出词典式释义，句子给出译文', async () => {
+  test.setTimeout(120_000);
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  await page.waitForTimeout(300);
+  const trigger = page.locator('ptx-ui-selection .trigger');
+  const result = page.locator('ptx-ui-selection .panel .result');
+
+  // 精确选中一个词（双击元素中心可能落在行尾空白处）
+  await page.evaluate(() => {
+    const node = document.querySelector('#p-second')!.firstChild!;
+    const start = node.textContent!.indexOf('brown');
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, start + 'brown'.length);
+    getSelection()!.removeAllRanges();
+    getSelection()!.addRange(range);
+    document.querySelector('#p-second')!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+  await trigger.click();
+  await expect(result).toHaveAttribute('data-state', 'done', { timeout: 60_000 });
+  const definition = await result.innerText();
+  expect(definition).toMatch(CJK);
+  expect(definition.split('\n').length).toBeGreaterThan(1);
+  // 第一行应是音标而不是单词本身
+  expect(definition.split('\n')[0]?.trim()).not.toBe('brown');
+  expect(definition).not.toMatch(/<\/?(text|context)>/);
+  await page.screenshot({ path: 'test-results/live-selection-word.png' });
+
+  await page.keyboard.press('Escape');
+  await page.locator('#p-second').click({ clickCount: 3 });
+  await trigger.click();
+  await expect(result).toHaveAttribute('data-state', 'done', { timeout: 60_000 });
+  await expect(result).toHaveText(CJK);
+  expect(await result.innerText()).not.toMatch(/<\/?(text|context)>/);
+  await page.screenshot({ path: 'test-results/live-selection-sentence.png' });
+  await page.close();
+});
+
 test('真实模型：设置页测试连接成功', async () => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/options.html`);

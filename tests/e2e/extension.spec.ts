@@ -311,6 +311,74 @@ test('出错：显示可点击重试的提示，恢复后点击即可翻译', as
   await page.close();
 });
 
+/** 在页面里选中某个元素内的一段文字，并触发 mouseup（模拟用户划词） */
+async function selectText(page: Page, selector: string, needle?: string) {
+  await page.evaluate(
+    ({ selector, needle }) => {
+      const el = document.querySelector(selector)!;
+      const node = el.firstChild!;
+      const text = node.textContent!;
+      const start = needle ? text.indexOf(needle) : 0;
+      const range = document.createRange();
+      range.setStart(node, start);
+      range.setEnd(node, needle ? start + needle.length : text.length);
+      const sel = getSelection()!;
+      sel.removeAllRanges();
+      sel.addRange(range);
+      el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    },
+    { selector, needle },
+  );
+}
+
+test('划词翻译：选中句子出现按钮，点击后流式显示译文，Esc 关闭', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  await page.waitForTimeout(300);
+
+  await page.locator('#p-second').click({ clickCount: 3 });
+  const trigger = page.locator('ptx-ui-selection .trigger');
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+
+  const panel = page.locator('ptx-ui-selection .panel');
+  await expect(panel.locator('.result')).toHaveAttribute('data-state', 'done');
+  await expect(panel.locator('.result')).toHaveText('【译】The quick brown fox jumps over the lazy dog.');
+  await expect(panel.locator('.source')).toHaveText('The quick brown fox jumps over the lazy dog.');
+  expect(server.selections.at(-1)).toMatchObject({ word: false, text: 'The quick brown fox jumps over the lazy dog.' });
+  // 划词不会触发整页翻译
+  await expect(page.locator('ptx-t')).toHaveCount(0);
+
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+  await page.close();
+});
+
+test('划词翻译：单词走词典模式并带上段落语境；中文选区不出现按钮；点击别处关闭弹窗', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  await page.waitForTimeout(300);
+
+  await selectText(page, '#p-second', 'brown');
+  const trigger = page.locator('ptx-ui-selection .trigger');
+  await trigger.click();
+  const panel = page.locator('ptx-ui-selection .panel');
+  await expect(panel.locator('.result')).toHaveText('【译】brown');
+  expect(server.selections.at(-1)).toMatchObject({
+    text: 'brown',
+    word: true,
+    context: 'The quick brown fox jumps over the lazy dog.',
+  });
+
+  await page.mouse.click(5, 5);
+  await expect(panel).toBeHidden();
+
+  await selectText(page, '#p-zh');
+  await page.waitForTimeout(300);
+  await expect(trigger).toBeHidden();
+  await page.close();
+});
+
 test('设置页：显示已配置服务，测试连接与获取模型列表可用', async () => {
   const page = await context.newPage();
   const errors: string[] = [];

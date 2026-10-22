@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildMessages, DEFAULT_STYLE_PROMPT, DEFAULT_STYLE_PROMPT_ZH, parseSegments } from '@/lib/providers/prompt';
+import {
+  buildMessages,
+  buildSelectionMessages,
+  DEFAULT_STYLE_PROMPT,
+  DEFAULT_STYLE_PROMPT_ZH,
+  isSingleWord,
+  parseSegments,
+} from '@/lib/providers/prompt';
 
 describe('buildMessages', () => {
   it('目标为中文时用中文 prompt，多段编号拼进 user 消息', () => {
@@ -25,6 +32,27 @@ describe('buildMessages', () => {
     expect(system?.content).toContain('Use polite form.');
     expect(system?.content).not.toContain(DEFAULT_STYLE_PROMPT);
     expect(system?.content).toContain('<s id="0">');
+  });
+});
+
+describe('划词 prompt', () => {
+  it('isSingleWord：单个英文词（含连字符、撇号）为真，词组、中文为假', () => {
+    expect(isSingleWord('brown')).toBe(true);
+    expect(isSingleWord("state-of-the-art")).toBe(true);
+    expect(isSingleWord("don't")).toBe(true);
+    expect(isSingleWord('brown fox')).toBe(false);
+    expect(isSingleWord('中文')).toBe(false);
+    expect(isSingleWord('a'.repeat(40))).toBe(false);
+  });
+
+  it('单词走词典模式，句子只要译文；语境放进 <context>', () => {
+    const [wordSys, wordUser] = buildSelectionMessages('brown', { targetLang: 'zh-CN', word: true, context: 'The quick brown fox.' });
+    expect(wordSys?.content).toContain('词典');
+    expect(wordUser?.content).toBe('<context>The quick brown fox.</context>\n<text>brown</text>');
+
+    const [sentSys, sentUser] = buildSelectionMessages('Hello world.', { targetLang: 'en', word: false });
+    expect(sentSys?.content).toContain('Output only the translation');
+    expect(sentUser?.content).toBe('<text>Hello world.</text>');
   });
 });
 

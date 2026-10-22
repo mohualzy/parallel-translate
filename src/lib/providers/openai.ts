@@ -58,7 +58,7 @@ export function parseSSELine(line: string): string {
   return typeof content === 'string' ? content : '';
 }
 
-async function readEventStream(body: ReadableStream<Uint8Array>): Promise<string> {
+async function readEventStream(body: ReadableStream<Uint8Array>, onDelta?: (delta: string) => void): Promise<string> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -69,10 +69,20 @@ async function readEventStream(body: ReadableStream<Uint8Array>): Promise<string
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split(/\r?\n/);
     buffer = lines.pop() ?? '';
-    for (const line of lines) output += parseSSELine(line);
+    for (const line of lines) {
+      const delta = parseSSELine(line);
+      if (delta) {
+        output += delta;
+        onDelta?.(delta);
+      }
+    }
   }
   buffer += decoder.decode();
-  if (buffer) output += parseSSELine(buffer);
+  const tail = buffer ? parseSSELine(buffer) : '';
+  if (tail) {
+    output += tail;
+    onDelta?.(tail);
+  }
   return output;
 }
 
@@ -100,7 +110,7 @@ export function createOpenAIClient(config: ProviderConfig): LLMClient {
   if (config.apiKey) headers.Authorization = `Bearer ${config.apiKey}`;
 
   return {
-    async complete(messages: ChatMessage[], signal: AbortSignal): Promise<string> {
+    async complete(messages: ChatMessage[], signal: AbortSignal, onDelta?: (delta: string) => void): Promise<string> {
       const res = await fetch(endpoint(config.baseURL, 'chat/completions'), {
         method: 'POST',
         headers,
@@ -119,11 +129,12 @@ export function createOpenAIClient(config: ProviderConfig): LLMClient {
       // 请求了流式但服务直接回 JSON 的情况也兼容
       const contentType = res.headers.get('content-type') ?? '';
       if (config.stream && res.body && !contentType.includes('application/json')) {
-        return readEventStream(res.body);
+        return readEventStream(res.body, onDelta);
       }
       const json = await res.json();
       const content = json?.choices?.[0]?.message?.content;
       if (typeof content !== 'string') throw new Error('响应格式不符合 OpenAI 兼容协议（缺少 choices[0].message.content）');
+      onDelta?.(content);
       return content;
     },
 

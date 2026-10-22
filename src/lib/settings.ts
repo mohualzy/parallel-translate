@@ -3,6 +3,8 @@ import { browser } from 'wxt/browser';
 export type DisplayMode = 'bilingual' | 'translation';
 export type TranslationStyle = 'none' | 'dashed' | 'underline' | 'highlight' | 'weak' | 'blur';
 export type HoverKey = 'Control' | 'Alt' | 'Shift' | 'off';
+/** 划词翻译：icon 选区旁出现按钮，点了再翻；direct 选中即翻；off 关闭 */
+export type SelectionMode = 'icon' | 'direct' | 'off';
 export type ProviderType = 'openai';
 
 /** 通用偏好：内容脚本可读（不含任何密钥） */
@@ -12,6 +14,7 @@ export interface Settings {
   displayMode: DisplayMode;
   translationStyle: TranslationStyle;
   hoverKey: HoverKey;
+  selectionMode: SelectionMode;
   /** 译文中保留链接、加粗、行内代码 */
   richText: boolean;
   /** 不自动翻译按钮、标签页、导航链接等短界面文字 */
@@ -50,6 +53,7 @@ export const DEFAULT_SETTINGS: Settings = {
   displayMode: 'bilingual',
   translationStyle: 'none',
   hoverKey: 'Control',
+  selectionMode: 'icon',
   richText: true,
   skipShortUI: true,
   autoTranslateForeign: false,

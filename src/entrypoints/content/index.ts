@@ -2,6 +2,7 @@ import './style.css';
 import { browser } from 'wxt/browser';
 import { defineContentScript } from 'wxt/utils/define-content-script';
 import { setupHoverTrigger } from '@/content/hover';
+import { SelectionTranslator } from '@/content/selection';
 import { PageTranslator } from '@/content/translator';
 import { baseLang } from '@/lib/languages';
 import type { TabRequest } from '@/lib/messages';
@@ -22,7 +23,7 @@ async function detectPageLang(): Promise<string> {
 export default defineContentScript({
   matches: ['<all_urls>'],
   runAt: 'document_idle',
-  async main() {
+  async main(ctx) {
     const settings = await getSettings();
     const translator = new PageTranslator(settings);
     onSettingsChanged((next) => translator.updateSettings(next));
@@ -30,6 +31,7 @@ export default defineContentScript({
       () => translator.settings.hoverKey,
       (target, x, y) => translator.translateAt(target, x, y),
     );
+    new SelectionTranslator(ctx, () => translator.settings);
 
     browser.runtime.onMessage.addListener((request: TabRequest, _sender, sendResponse) => {
       if (request.type === 'toggle') translator.toggle();
