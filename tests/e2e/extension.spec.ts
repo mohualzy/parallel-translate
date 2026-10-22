@@ -279,6 +279,25 @@ test('快捷键：Alt+W 立即翻译整页（不等滚动），再按还原；�
   await page.close();
 });
 
+test('同语言提示：页面已是目标语言时提示，不发请求；外文页面不提示', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/zh.html`);
+  const before = server.batches.length;
+  await toggle(page);
+  const toast = page.locator('ptx-ui-toast .toast');
+  await expect(toast).toHaveText('没有找到需要翻译的内容（页面可能已经是简体中文）');
+  expect(server.batches.length).toBe(before);
+  await page.close();
+
+  const foreign = await context.newPage();
+  await foreign.goto(`${server.url}/page.html`);
+  await toggle(foreign);
+  await expect(translation(foreign, '#title')).toBeVisible();
+  await foreign.waitForTimeout(1800);
+  await expect(foreign.locator('ptx-ui-toast .toast')).toHaveCount(0);
+  await foreign.close();
+});
+
 test('术语表：只把页面里出现的术语注入 prompt，改术语表后不复用旧缓存', async () => {
   await setSettings({ glossary: 'fox = 狐狸君\nunicorn = 独角兽' });
   try {

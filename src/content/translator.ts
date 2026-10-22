@@ -36,6 +36,8 @@ const MAX_RESTORES = 5;
  * 等它停下来再翻译，避免每次变化都发请求（见 docs/DECISIONS.md D13）。
  */
 const SETTLE_MS = 1000;
+/** 整页可翻译文字少于这个字数时提示「可能已是目标语言」 */
+const SAME_LANGUAGE_MAX_CHARS = 100;
 
 /**
  * 页面翻译控制器：段落登记 → 进入视口排队 → 批量请求 → 渲染；
@@ -76,6 +78,9 @@ export class PageTranslator {
 
   // ---------- 对外接口 ----------
 
+  /** 开启翻译后整页几乎没有可翻译内容时回调（多半已是目标语言） */
+  onNothingToTranslate?: () => void;
+
   /** 订阅「整页翻译开/关」变化（悬浮球等 UI 据此同步状态），返回取消订阅函数 */
   onEnabledChange(listener: (enabled: boolean) => void): () => void {
     this.enabledListeners.add(listener);
@@ -90,6 +95,14 @@ export class PageTranslator {
     this.mo.observe(document.body, { childList: true, subtree: true, characterData: true });
     this.scan([document.body]);
     this.emitEnabled();
+    // 稍等动态内容加载后再判断，避免 SPA 首屏还没渲染就误报
+    const generation = this.generation;
+    setTimeout(() => {
+      if (generation !== this.generation || !this.enabled) return;
+      let chars = 0;
+      for (const p of this.paragraphs) chars += p.plain.length;
+      if (chars < SAME_LANGUAGE_MAX_CHARS) this.onNothingToTranslate?.();
+    }, 1500);
   }
 
   disable() {

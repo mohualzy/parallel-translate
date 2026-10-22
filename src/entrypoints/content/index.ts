@@ -5,7 +5,8 @@ import { FloatBall } from '@/content/float-ball';
 import { setupHoverTrigger } from '@/content/hover';
 import { SelectionTranslator } from '@/content/selection';
 import { PageTranslator } from '@/content/translator';
-import { baseLang } from '@/lib/languages';
+import { showToast } from '@/content/ui/toast';
+import { baseLang, getLanguage } from '@/lib/languages';
 import type { TabRequest } from '@/lib/messages';
 import { getSettings, matchSite, onSettingsChanged, saveSettings } from '@/lib/settings';
 
@@ -27,6 +28,8 @@ export default defineContentScript({
   async main(ctx) {
     const settings = await getSettings();
     const translator = new PageTranslator(settings);
+    translator.onNothingToTranslate = () =>
+      void showToast(ctx, `没有找到需要翻译的内容（页面可能已经是${getLanguage(translator.settings.targetLang).name}）`);
     const floatBall = new FloatBall(ctx, translator);
     void floatBall.sync(settings);
     onSettingsChanged((next) => {
