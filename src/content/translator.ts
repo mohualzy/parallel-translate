@@ -4,7 +4,7 @@ import type { Settings } from '@/lib/settings';
 import { collectRuns, runContainsPoint, type Run } from './collect';
 import { buildExcludeSelector, CONTENT_CONTAINERS, DomClassifier, looksLikeUIChrome, OWN_TAG } from './dom';
 import { pageContext } from './page-context';
-import { deserialize, serialize } from './richtext';
+import { deserialize, serialize, unescapeText } from './richtext';
 
 type State = 'idle' | 'queued' | 'loading' | 'done' | 'error';
 
@@ -38,6 +38,16 @@ const MAX_RESTORES = 5;
 const SETTLE_MS = 1000;
 /** 整页可翻译文字少于这个字数时提示「可能已是目标语言」 */
 const SAME_LANGUAGE_MAX_CHARS = 100;
+
+/** 去掉占位标签、反转义、压缩空白、忽略大小写后比较译文与原文 */
+export function sameText(translation: string, source: string): boolean {
+  const norm = (s: string) =>
+    unescapeText(s.replace(/<\/?[gx]\d+\s*\/?>/g, ''))
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  return norm(translation) === norm(source);
+}
 
 function isClipping(el: Element): boolean {
   const cs = getComputedStyle(el);
@@ -488,8 +498,14 @@ export class PageTranslator {
   }
 
   private renderDone(p: Paragraph) {
+    if (p.translation === undefined) return;
+    // 模型原样返回（人名、产品名、代码等本就不需要翻译）：再显示一遍只是重复，不插入译文
+    if (sameText(p.translation, p.source)) {
+      this.removeView(p);
+      return;
+    }
     const el = this.ensureView(p);
-    if (!el || p.translation === undefined) return;
+    if (!el) return;
     el.className = `${this.layoutClass(p)} ptx-style-${this.settings.translationStyle}`;
     el.lang = this.settings.targetLang;
     el.removeAttribute('title');
@@ -565,6 +581,7 @@ export class PageTranslator {
 
   private restoreView(p: Paragraph) {
     if (!p.el || p.el.isConnected || p.dismissed || p.state === 'idle' || p.state === 'queued') return;
+    if (p.state === 'done' && p.translation !== undefined && sameText(p.translation, p.source)) return;
     if (p.restores++ >= MAX_RESTORES) return;
     if (p.state === 'done') this.renderDone(p);
     else if (p.state === 'error') this.renderError(p);

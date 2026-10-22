@@ -298,6 +298,25 @@ test('同语言提示：页面已是目标语言时提示，不发请求；外�
   await foreign.close();
 });
 
+test('模型原样返回的段落（人名等）不重复显示', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  await page.evaluate(() =>
+    document.querySelector('#title')!.insertAdjacentHTML('afterend', '<p id="p-name">Oleksandr Tarasiuk and Ada Lovelace</p>'),
+  );
+  server.echoWhen = (s) => s.includes('Oleksandr');
+  try {
+    await toggle(page);
+    await expect(translation(page, '#title')).toContainText('【译】');
+    await expect.poll(() => server.batches.flat().some((s) => s.includes('Oleksandr'))).toBe(true);
+    await page.waitForTimeout(300);
+    await expect(page.locator('#p-name ptx-t')).toHaveCount(0);
+  } finally {
+    server.echoWhen = null;
+  }
+  await page.close();
+});
+
 test('解除截断：省略号容器里的译文完整可见，关闭翻译后复原', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);

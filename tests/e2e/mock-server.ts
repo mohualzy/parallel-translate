@@ -18,6 +18,8 @@ export interface MockServer {
   failWith: number | null;
   /** 划词翻译请求：选中文本、是否词典模式、带上的语境 */
   selections: { text: string; word: boolean; context: string }[];
+  /** 匹配的段原样返回（模拟模型对人名、产品名不做翻译） */
+  echoWhen: ((segment: string) => boolean) | null;
   /** 多段请求时故意漏掉匹配的段，模拟模型漏段 */
   dropWhen: ((segment: string) => boolean) | null;
   close(): Promise<void>;
@@ -39,7 +41,7 @@ function extractSegments(content: string): string[] {
 }
 
 export async function startMockServer(): Promise<MockServer> {
-  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], systems: [], users: [], selections: [], failWith: null, dropWhen: null };
+  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], systems: [], users: [], selections: [], failWith: null, echoWhen: null, dropWhen: null };
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -84,7 +86,7 @@ export async function startMockServer(): Promise<MockServer> {
         state.users.push(user);
       }
       const output = selected !== undefined ? `${PREFIX}${selected}` : segments
-        .map((s, i) => (segments.length > 1 && state.dropWhen?.(s) ? '' : `<s id="${i}">${PREFIX}${s}</s>`))
+        .map((s, i) => (segments.length > 1 && state.dropWhen?.(s) ? '' : `<s id="${i}">${state.echoWhen?.(s) ? '' : PREFIX}${s}</s>`))
         .join('\n');
 
       if (body.stream) {
