@@ -6,6 +6,7 @@ import {
   getActiveProvider,
   getSettings,
   matchSite,
+  PROVIDER_PRESETS,
   saveProviders,
   saveSettings,
 } from '@/lib/settings';
@@ -29,6 +30,16 @@ describe('settings storage', () => {
     expect((await getActiveProvider())?.name).toBe('B');
     await saveSettings({ activeProviderId: 'missing' });
     expect((await getActiveProvider())?.name).toBe('A');
+  });
+});
+
+describe('createProvider', () => {
+  it('从预设创建时带上预设的地址和额外参数', () => {
+    const deepseek = PROVIDER_PRESETS.find((p) => p.label === 'DeepSeek')!;
+    const p = createProvider(deepseek);
+    expect(p.baseURL).toBe('https://api.deepseek.com/v1');
+    expect(JSON.parse(p.extraBody)).toEqual({ thinking: { type: 'disabled' } });
+    expect(createProvider().extraBody).toBe('');
   });
 });
 

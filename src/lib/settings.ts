@@ -65,11 +65,19 @@ export interface ProviderPreset {
   baseURL: string;
   /** 模型名示例，仅作输入框占位提示 */
   modelHint: string;
+  /** 新建该服务时默认填入的额外请求参数 */
+  extraBody?: string;
 }
 
 /** 常见 OpenAI 兼容服务的 Base URL；模型名不写死（会过时），用「获取模型列表」拉取 */
 export const PROVIDER_PRESETS: ProviderPreset[] = [
-  { label: 'DeepSeek', baseURL: 'https://api.deepseek.com/v1', modelHint: 'deepseek-chat' },
+  // DeepSeek 当前模型默认开启推理；翻译不需要，关闭后实测输出 token 减少约 75%（2026-10-22）
+  {
+    label: 'DeepSeek',
+    baseURL: 'https://api.deepseek.com/v1',
+    modelHint: 'deepseek-flash',
+    extraBody: '{"thinking": {"type": "disabled"}}',
+  },
   { label: 'OpenAI', baseURL: 'https://api.openai.com/v1', modelHint: 'gpt-4o-mini' },
   { label: '通义千问 (DashScope)', baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1', modelHint: 'qwen-plus' },
   { label: 'Kimi (Moonshot)', baseURL: 'https://api.moonshot.cn/v1', modelHint: 'moonshot-v1-8k' },
@@ -94,7 +102,7 @@ export function createProvider(preset?: ProviderPreset): ProviderConfig {
     timeoutMs: 90_000,
     stream: true,
     prompt: '',
-    extraBody: '',
+    extraBody: preset?.extraBody ?? '',
   };
 }
 
