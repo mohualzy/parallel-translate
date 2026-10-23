@@ -16,7 +16,10 @@
 
 ### 已打开的标签页没有内容脚本
 
-- 安装/更新扩展前打开的页面不会自动注入内容脚本，`tabs.sendMessage` 会失败。目前在弹窗里提示「刷新页面」；后续可以用 `scripting.executeScript` 按需注入。
+- 安装 / 更新扩展前打开的页面不会自动注入内容脚本，`tabs.sendMessage` 报「Receiving end does not exist」。更新 / 重载后旧脚本还在页面里但已失效：`runtime.id` 变成 `undefined`，调用扩展 API 抛「Extension context invalidated」，它留下的 DOM（悬浮球、译文）还在、监听也还在。处理见 `src/lib/inject.ts` 与 `src/content/lifecycle.ts`。
+- WXT 的 `ContentScriptContext` 构造时就会通知旧实例失效，但它靠 `CustomEvent.detail` 识别「同一个脚本」：同一隔离世界里有效，早于新实例的 `main()`；跨隔离世界读不到 `detail`，孤儿脚本收不到。所以另外派发一个不带数据的普通事件，并且旧实例退场时不能删掉「正在翻译」标记（否则新实例读到时已经没了）。
+- Playwright 里 `chrome.runtime.reload()` 会把命令行加载的扩展直接卸掉，不会再加载回来（扩展页面返回 `ERR_BLOCKED_BY_CLIENT`，Service Worker 消失），所以「重载扩展」只能在日常 Chrome 里手动验证；E2E 用「对已有实例的页面再注入一次」覆盖交接逻辑。
+- 后台标签页（`visibilityState: hidden`）里 IntersectionObserver 不触发，懒翻译不会开始；通过 CDP 点击后台标签页里的悬浮球也没有反应。验证时用「立即翻译整页」或扩展消息代替。
 
 ### 自动化测试只能用 Chromium
 
