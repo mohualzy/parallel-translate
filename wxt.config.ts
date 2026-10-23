@@ -1,8 +1,19 @@
 import { defineConfig } from 'wxt';
+import { YOUTUBE_MATCHES } from './src/lib/youtube';
 
 // 文档：https://wxt.dev/api/config.html
 export default defineConfig({
   srcDir: 'src',
+  hooks: {
+    // e2e 构建（`wxt build --mode e2e`）让 YouTube 脚本额外匹配本地 mock 服务，
+    // 用仿 YouTube 的测试页验证字幕功能；正式构建的 manifest 不受影响。
+    'build:manifestGenerated': (wxt, manifest) => {
+      if (wxt.config.mode !== 'e2e') return;
+      for (const script of manifest.content_scripts ?? []) {
+        if (script.matches?.some((m) => YOUTUBE_MATCHES.includes(m))) script.matches.push('http://127.0.0.1/*');
+      }
+    },
+  },
   // 关闭 auto-imports：所有依赖显式 import，便于阅读（见 AGENTS.md 规则 3）
   imports: false,
   manifest: {

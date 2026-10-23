@@ -7,11 +7,11 @@ import { startMockServer, type MockServer } from './mock-server';
 declare const chrome: typeof browser;
 
 /**
- * 端到端：加载 .output/chrome-mv3 里真实构建的扩展，配合本地 mock 模型服务。
+ * 端到端：加载 .output/chrome-mv3-e2e 里真实构建的扩展（e2e 模式），配合本地 mock 模型服务。
  * 需先 `pnpm build`（`just e2e` 会自动构建）。
  */
 
-const EXTENSION = path.resolve('.output/chrome-mv3');
+const EXTENSION = path.resolve('.output/chrome-mv3-e2e');
 
 let context: BrowserContext;
 let sw: Worker;

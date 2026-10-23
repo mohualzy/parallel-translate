@@ -36,6 +36,25 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
+/** 仿 YouTube json3 字幕：前三条紧挨着开头，最后一条在 5 分钟处（用来验证按进度翻译） */
+export const MOCK_CUES = [
+  { start: 0, end: 3000, text: 'Hello and welcome to the channel.' },
+  { start: 3000, end: 6000, text: 'Today we talk about translation.' },
+  { start: 6000, end: 120_000, text: 'This line stays on screen for a long time.' },
+  { start: 300_000, end: 303_000, text: 'A far away line near the end of the video.' },
+];
+
+function timedtext(videoId: string) {
+  const cues = videoId === 'second' ? [{ start: 0, end: 120_000, text: 'Second video subtitle line.' }] : MOCK_CUES;
+  return {
+    wireMagic: 'pb3',
+    events: [
+      { tStartMs: 0, dDurationMs: 999_999, id: 1, wpWinPosId: 1 },
+      ...cues.map((c) => ({ tStartMs: c.start, dDurationMs: c.end - c.start, segs: [{ utf8: c.text }] })),
+    ],
+  };
+}
+
 function extractSegments(content: string): string[] {
   return [...content.matchAll(/<s id="(\d+)">([\s\S]*?)<\/s>/g)].map((m) => m[2]!);
 }
@@ -49,6 +68,18 @@ export async function startMockServer(): Promise<MockServer> {
     if (req.method === 'GET' && url.pathname.endsWith('.html')) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end(readFileSync(path.join(FIXTURES, path.basename(url.pathname))));
+      return;
+    }
+
+    // 仿 YouTube：视频页与字幕接口
+    if (req.method === 'GET' && url.pathname === '/watch') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(readFileSync(path.join(FIXTURES, 'youtube.html')));
+      return;
+    }
+    if (req.method === 'GET' && url.pathname === '/api/timedtext') {
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(timedtext(url.searchParams.get('v') ?? '')));
       return;
     }
 

@@ -10,7 +10,7 @@ import { startMockServer, type MockServer } from '../e2e/mock-server';
 
 declare const chrome: typeof browser;
 
-const EXTENSION = path.resolve('.output/chrome-mv3');
+const EXTENSION = path.resolve('.output/chrome-mv3-e2e');
 const API_KEY = process.env.DEEPSEEK_API_KEY;
 const MODEL = process.env.DEEPSEEK_MODEL ?? 'deepseek-flash';
 

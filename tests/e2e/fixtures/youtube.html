@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Mock Video - YouTube</title>
+    <style>
+      body { margin: 0; background: #0f0f0f; color: #fff; font-family: sans-serif; }
+      #movie_player { position: relative; width: 640px; height: 360px; background: #000; overflow: hidden; }
+      video { width: 100%; height: 100%; }
+      .ytp-caption-window-container { position: absolute; left: 0; right: 0; bottom: 40px; text-align: center; }
+      .ytp-subtitles-button { position: absolute; right: 8px; bottom: 8px; }
+    </style>
+  </head>
+  <body>
+    <!-- 只模拟字幕功能用到的那部分 YouTube 播放器结构 -->
+    <div id="movie_player" class="html5-video-player playing-mode">
+      <video class="video-stream html5-main-video" muted></video>
+      <div id="ytp-caption-window-container" class="ytp-caption-window-container">
+        <span class="ytp-caption-segment" id="native-caption"></span>
+      </div>
+      <button class="ytp-subtitles-button ytp-button" aria-pressed="false">CC</button>
+    </div>
+    <script>
+      // 用 canvas 视频流当时间源：currentTime 从 0 开始随真实时间增长
+      const canvas = document.createElement('canvas');
+      canvas.width = 64;
+      canvas.height = 36;
+      const ctx = canvas.getContext('2d');
+      setInterval(() => {
+        ctx.fillStyle = `hsl(${Date.now() % 360}, 60%, 40%)`;
+        ctx.fillRect(0, 0, 64, 36);
+      }, 100);
+      const video = document.querySelector('video');
+      video.srcObject = canvas.captureStream(10);
+      video.play();
+
+      // 像真实播放器一样：打开 CC 时用 XHR 请求字幕，并显示原生字幕
+      const videoId = new URLSearchParams(location.search).get('v') || 'test123';
+      const button = document.querySelector('.ytp-subtitles-button');
+      button.addEventListener('click', () => {
+        const on = button.getAttribute('aria-pressed') !== 'true';
+        button.setAttribute('aria-pressed', String(on));
+        document.querySelector('#native-caption').textContent = on ? 'native caption' : '';
+        if (!on) return;
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', `/api/timedtext?v=${videoId}&lang=en&fmt=json3&pot=mock-token`);
+        xhr.send();
+      });
+    </script>
+  </body>
+</html>
