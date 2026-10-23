@@ -93,3 +93,8 @@
 - 测试页里，页面脚本给 `<video>` 定义的属性在隔离世界看不到，所以时间源用 `canvas.captureStream()` 的真实视频流。
 - 字幕轨列表与切换：页面世界的 `#movie_player` 元素上有非公开接口 `getOption('captions', 'tracklist')`（每条带 `languageCode`、`kind`（自动字幕为 `asr`）、`vss_id`（人工 `.en`、自动 `a.en`））和 `setOption('captions', 'track', track)`。只能在 MAIN world 调用，隔离世界拿不到这些方法。切换后播放器会重新请求一次 timedtext（不带 `kind=asr`）。
 - 自动字幕的分词：英文每个词自带前导空格（`" guys"`），日文、中文没有空格，合句时要保留原始分隔。
+- 真实 YouTube 实测（2026-10-22，通过 web-access 的 CDP 连到日常 Chrome，不会被机器人检测拦截）：
+  - 字幕请求确实是 `fmt=json3`，响应以 `{"wireMagic": "pb3"` 开头；自动字幕带 `kind=asr`。
+  - `getOption('captions', 'tracklist')` 在只有自动字幕的视频上返回空数组，`getPlayerResponse().captions.playerCaptionsTracklistRenderer.captionTracks` 才可靠（字段名 `vssId`）。
+  - `setOption('captions', 'track', { languageCode: 'en' })` 在同语言同时有人工字幕和自动字幕时会选中人工字幕；想切到自动字幕（`a.en`），用这几种写法都会被改回人工字幕。
+  - **字幕语言偏好是全局的**：在任意视频上 `setOption` 切换语言，会改变用户在所有视频上的默认字幕语言。之后打开只有日语自动字幕的视频，播放器会自动翻译成英文（请求带 `tlang=en`）。测试时改过偏好，必须改回去。

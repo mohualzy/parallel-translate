@@ -44,7 +44,7 @@
 | AI 助手 = prompt 档案 | 🟡 每个服务一个自定义要求 | 多档案 + 按站点选择（P2） |
 | 文本 / 侧栏多模型对比 | ❌ | P3（当前只用一个模型，收益低） |
 | 编辑译文 | ❌ | P3 |
-| 视频字幕 | ❌ | **P2 首要大项**，YouTube 优先，用官方字幕数据，不做画面 OCR |
+| 视频字幕 | ✅ YouTube 双语字幕（旁听播放器字幕、按进度翻译、优先人工字幕） | 嵌入式播放器、Shorts、直播字幕待做 |
 | PDF / EPUB / HTML 文件 | ❌ | P3；自带本地 pdf.js 阅读器，文件不交给远程 Web App |
 | 图片 / 漫画 OCR | ❌ | P3；deepseek-flash 支持图片输入，优先评估视觉模型 |
 | 截图区域 OCR | ❌ | P3，与图片翻译共用视觉模型通道 |
@@ -70,7 +70,7 @@
 
 ### P2 — 新场景
 
-- [x] 视频双语字幕（YouTube）— 已实现，E2E 通过；真实站点待手动验证：[设计](specs/2026-10-22-youtube-subtitles-design.md) · [计划](plans/2026-10-22-youtube-subtitles.md)
+- [x] 视频双语字幕（YouTube）— 已实现，E2E 与真实站点实测通过：[设计](specs/2026-10-22-youtube-subtitles-design.md) · [计划](plans/2026-10-22-youtube-subtitles.md)
 - [ ] 输入框翻译：Alt+I / 连按三次空格；过滤输入法组合输入；可撤销写回
 - [ ] AI 助手 / prompt 档案：技术、论文、新闻、GitHub 等预设风格，可按站点自动选择
 - [ ] AI 抽取文章术语，保证长文前后译法一致（最多 12 条候选）
