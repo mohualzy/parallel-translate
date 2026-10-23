@@ -18,7 +18,7 @@
 
 ## 追加：优先人工字幕 + 标注自动字幕（实测反馈）
 
-- [ ] **7. 挑选人工字幕**：`pickManualTrack` 纯函数（同语言 → 英文 → 任意；排除目标语言）。
+- [x] **7. 挑选人工字幕**：`pickManualTrack` 纯函数（同语言 → 英文 → 任意；排除目标语言）。
   验证：`pnpm vitest run tests/unit/subtitles.test.ts` 通过。
 - [ ] **8. 钩子读取字幕轨并按指令切换**：旁听到自动字幕时附带字幕轨列表；收到 `select-track` 指令时调用 `setOption('captions', 'track', …)`。
   验证：由第 9 步的 E2E 覆盖。

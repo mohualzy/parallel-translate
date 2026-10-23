@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { activeCueIndex, cleanCueText, nextBatch, parseJson3, parseTimedtextUrl, type Cue } from '@/lib/subtitles';
+import {
+  activeCueIndex,
+  cleanCueText,
+  nextBatch,
+  parseJson3,
+  parseTimedtextUrl,
+  pickManualTrack,
+  type Cue,
+} from '@/lib/subtitles';
 
 describe('parseTimedtextUrl', () => {
   it('读取视频 ID、语言、是否自动字幕、是否已被 YouTube 机器翻译', () => {
@@ -77,6 +85,26 @@ describe('parseJson3：自动字幕合句', () => {
     const list = Array.from({ length: 30 }, (_, i): [string, number] => [`${i ? ' ' : ''}w${i}`, i * 100]);
     const cues = parseJson3(JSON.stringify({ events: [words(0, list)] }), true);
     expect(cues.map((c) => c.text.split(' ').length)).toEqual([18, 12]);
+  });
+});
+
+describe('pickManualTrack', () => {
+  const track = (languageCode: string, auto: boolean) => ({
+    languageCode,
+    vssId: `${auto ? 'a' : ''}.${languageCode}`,
+    kind: auto ? 'asr' : '',
+    name: languageCode,
+  });
+
+  it('优先与自动字幕同语言的人工字幕，其次英文，再次任意', () => {
+    expect(pickManualTrack([track('ja', true), track('en', false), track('ja', false)], 'ja', 'zh-CN')?.vssId).toBe('.ja');
+    expect(pickManualTrack([track('ja', true), track('fr', false), track('en', false)], 'ja', 'zh-CN')?.vssId).toBe('.en');
+    expect(pickManualTrack([track('ja', true), track('fr', false)], 'ja', 'zh-CN')?.vssId).toBe('.fr');
+  });
+
+  it('只有自动字幕，或人工字幕只有目标语言时不切换', () => {
+    expect(pickManualTrack([track('ja', true)], 'ja', 'zh-CN')).toBeUndefined();
+    expect(pickManualTrack([track('ja', true), track('zh-Hans', false)], 'ja', 'zh-CN')).toBeUndefined();
   });
 });
 

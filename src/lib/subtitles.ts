@@ -1,3 +1,5 @@
+import { baseLang } from './languages';
+
 /**
  * YouTube 字幕数据（/api/timedtext，fmt=json3）的解析与调度逻辑。纯函数，便于单测。
  * 设计见 docs/specs/2026-10-22-youtube-subtitles-design.md。
@@ -165,4 +167,34 @@ export function nextBatch(
     if (needsTranslation(i)) batch.push(i);
   }
   return batch;
+}
+
+/** 播放器字幕轨列表里的一条（来自页面世界的 getOption('captions', 'tracklist')） */
+export interface CaptionTrackInfo {
+  languageCode: string;
+  /** 例如 ".en"（人工）、"a.en"（自动生成） */
+  vssId: string;
+  kind: string;
+  name: string;
+}
+
+export function isAutoTrack(track: CaptionTrackInfo): boolean {
+  return track.kind === 'asr' || track.vssId.startsWith('a.');
+}
+
+/**
+ * 当前加载的是自动字幕时，挑一条人工字幕替换：与自动字幕同语言的优先，其次英文，再次任意一条。
+ * 目标语言的人工字幕不选：那条原生字幕本身就能直接看，不需要双语。
+ */
+export function pickManualTrack(
+  tracks: CaptionTrackInfo[],
+  autoLang: string,
+  targetLang: string,
+): CaptionTrackInfo | undefined {
+  const manual = tracks.filter((t) => !isAutoTrack(t) && baseLang(t.languageCode) !== baseLang(targetLang));
+  return (
+    manual.find((t) => baseLang(t.languageCode) === baseLang(autoLang)) ??
+    manual.find((t) => baseLang(t.languageCode) === 'en') ??
+    manual[0]
+  );
 }
