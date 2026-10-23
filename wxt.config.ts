@@ -10,7 +10,8 @@ export default defineConfig({
     'build:manifestGenerated': (wxt, manifest) => {
       if (wxt.config.mode !== 'e2e') return;
       for (const script of manifest.content_scripts ?? []) {
-        if (script.matches?.some((m) => YOUTUBE_MATCHES.includes(m))) script.matches.push('http://127.0.0.1/*');
+        // 多个脚本共用同一个 YOUTUBE_MATCHES 数组对象，必须赋新数组，不能 push
+        if (script.matches?.some((m) => YOUTUBE_MATCHES.includes(m))) script.matches = [...script.matches, 'http://127.0.0.1/*'];
       }
     },
   },

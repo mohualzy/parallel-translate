@@ -8,6 +8,8 @@ export interface PageContext {
   title: string;
   /** meta description / og:description，最多 300 字 */
   summary: string;
+  /** 内容是视频字幕：相邻片段是连续台词，译文要口语、简洁 */
+  subtitles?: boolean;
 }
 
 export type BackgroundRequest =

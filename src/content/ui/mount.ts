@@ -18,14 +18,20 @@ export interface PageUi {
   remove(): void;
 }
 
-export async function mountPageUi(ctx: ContentScriptContext, name: string, css: string): Promise<PageUi> {
+export async function mountPageUi(
+  ctx: ContentScriptContext,
+  name: string,
+  css: string,
+  /** 默认挂在 <html> 下；需要随某个元素一起显示（如全屏播放器里的字幕层）时传入该元素 */
+  anchor: Element = document.documentElement,
+): Promise<PageUi> {
   const tag = `ptx-ui-${name}`;
   document.querySelectorAll(tag).forEach((el) => el.remove());
 
   const ui = await createShadowRootUi(ctx, {
     name: tag,
     position: 'inline',
-    anchor: document.documentElement,
+    anchor,
     append: 'last',
     css: `${themeCss}\n${css}`,
     // 组件里的按键不要冒泡到网页（避免触发网页快捷键）

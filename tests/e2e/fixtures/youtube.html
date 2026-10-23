@@ -35,13 +35,14 @@
       video.play();
 
       // 像真实播放器一样：打开 CC 时用 XHR 请求字幕，并显示原生字幕
-      const videoId = new URLSearchParams(location.search).get('v') || 'test123';
       const button = document.querySelector('.ytp-subtitles-button');
       button.addEventListener('click', () => {
         const on = button.getAttribute('aria-pressed') !== 'true';
         button.setAttribute('aria-pressed', String(on));
         document.querySelector('#native-caption').textContent = on ? 'native caption' : '';
         if (!on) return;
+        // 单页应用切换视频后，按当前 URL 的 v 参数请求字幕
+        const videoId = new URLSearchParams(location.search).get('v') || 'test123';
         const xhr = new XMLHttpRequest();
         xhr.open('GET', `/api/timedtext?v=${videoId}&lang=en&fmt=json3&pot=mock-token`);
         xhr.send();

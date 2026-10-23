@@ -1,0 +1,4 @@
+/* 双语字幕层显示期间，原生字幕设为不可见（仍在页面上，只是看不到），关掉后自动恢复 */
+html[data-ptx-subtitles] .ytp-caption-window-container {
+  visibility: hidden !important;
+}

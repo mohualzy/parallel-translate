@@ -399,6 +399,66 @@ test('iframe：跟随顶层页面开关，后加载的 iframe 也跟随；太小
   await page.close();
 });
 
+test('YouTube 字幕：打开 CC 后显示原文 + 译文并跟随播放；按进度翻译；原生字幕隐藏，关闭 CC 后恢复', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/watch?v=test123`);
+  await page.waitForTimeout(500);
+  const layer = page.locator('ptx-ui-subtitles .layer');
+  const original = page.locator('ptx-ui-subtitles .original');
+  const translated = page.locator('ptx-ui-subtitles .translated');
+  const nativeCaptions = page.locator('#ytp-caption-window-container');
+
+  await page.locator('.ytp-subtitles-button').click();
+  await expect(original).toHaveText('Hello and welcome to the channel.');
+  await expect(translated).toHaveText('【译】Hello and welcome to the channel.');
+  await expect(page.locator('html')).toHaveAttribute('data-ptx-subtitles', '');
+  await expect(nativeCaptions).toBeHidden();
+
+  // 跟随播放进度切换到下一条
+  await expect(original).toHaveText('Today we talk about translation.', { timeout: 8000 });
+  await expect(translated).toHaveText('【译】Today we talk about translation.');
+
+  // 只翻译当前时间附近的字幕：5 分钟处那条还没有请求；请求上下文标注为视频字幕
+  const batchIndex = server.batches.findIndex((b) => b.some((s) => s.includes('Hello and welcome')));
+  expect(server.batches[batchIndex]).not.toContain('A far away line near the end of the video.');
+  expect(server.users[batchIndex]).toContain('内容类型：视频字幕');
+  expect(server.batches.flat().some((s) => s.includes('far away line'))).toBe(false);
+
+  await page.locator('.ytp-subtitles-button').click();
+  await expect(layer).toBeHidden();
+  await expect(page.locator('html')).not.toHaveAttribute('data-ptx-subtitles', '');
+  await page.close();
+});
+
+test('YouTube 字幕：单页应用切换视频后换成新视频的字幕；关闭设置后不接管字幕', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/watch?v=test123`);
+  await page.waitForTimeout(500);
+  const cc = page.locator('.ytp-subtitles-button');
+  const original = page.locator('ptx-ui-subtitles .original');
+  const layer = page.locator('ptx-ui-subtitles .layer');
+
+  await cc.click();
+  await expect(original).toHaveText('Hello and welcome to the channel.');
+
+  // 切换视频：旧字幕不再显示；新视频请求字幕后显示新字幕
+  await page.evaluate(() => history.pushState({}, '', '/watch?v=second'));
+  await expect(layer).toBeHidden();
+  await cc.click();
+  await cc.click();
+  await expect(original).toHaveText('Second video subtitle line.');
+  await expect(page.locator('ptx-ui-subtitles .translated')).toHaveText('【译】Second video subtitle line.');
+
+  await setSettings({ youtubeSubtitles: false });
+  try {
+    await expect(layer).toBeHidden();
+    await expect(page.locator('#ytp-caption-window-container')).toBeVisible();
+  } finally {
+    await setSettings({ youtubeSubtitles: true });
+  }
+  await page.close();
+});
+
 test('解除截断：省略号容器里的译文完整可见，关闭翻译后复原', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);

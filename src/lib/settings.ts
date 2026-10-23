@@ -28,6 +28,8 @@ export interface Settings {
   unclamp: boolean;
   /** 翻译时把标签页标题换成译文 */
   translateTitle: boolean;
+  /** YouTube 打开字幕时显示双语字幕 */
+  youtubeSubtitles: boolean;
   /** 页面语言不是目标语言时自动翻译 */
   autoTranslateForeign: boolean;
   alwaysTranslateSites: string[];
@@ -72,6 +74,7 @@ export const DEFAULT_SETTINGS: Settings = {
   skipShortUI: true,
   unclamp: true,
   translateTitle: true,
+  youtubeSubtitles: true,
   autoTranslateForeign: false,
   alwaysTranslateSites: [],
   neverTranslateSites: [],

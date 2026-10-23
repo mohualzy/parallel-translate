@@ -9,7 +9,7 @@
   验证：`pnpm build` 产物的 manifest 不含 `127.0.0.1`；`pnpm build:e2e` 的产物含有。
 - [x] **3. 页面世界旁听**：`src/entrypoints/youtube-hook.content.ts`（MAIN world、`document_start`），包装 XHR / fetch，只读取响应，带缓存与就绪握手。
   验证：E2E 中点击 CC 后，内容脚本收到字幕文本（由第 4 步的用例覆盖）。
-- [ ] **4. 双语字幕层与按进度翻译**：`src/content/subtitles/`，内容包括字幕层渲染、播放同步、CC 跟随、隐藏原生字幕、视频切换、设置项。
+- [x] **4. 双语字幕层与按进度翻译**：`src/content/subtitles/`，内容包括字幕层渲染、播放同步、CC 跟随、隐藏原生字幕、视频切换、设置项。
   验证：`just e2e` 中的 YouTube 用例全部通过，覆盖双语显示、跟随进度切换条目、远处条目不提前请求、关闭 CC 后隐藏。
 - [ ] **5. 真实 YouTube 实测**：用 deepseek-flash 打开一个有英文字幕的视频，打开 CC，截图检查效果。
   验证：截图里有原文 + 译文两行，且与画面时间对得上；如被 YouTube 拦截，如实记录到 TECH_NOTES。

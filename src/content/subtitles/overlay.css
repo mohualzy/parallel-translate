@@ -1,0 +1,44 @@
+[hidden] {
+  display: none !important;
+}
+
+/* 相对播放器定位（宿主挂在播放器里，播放器是定位元素），全屏时随播放器一起放大 */
+.layer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 7%;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  font: var(--ptx-sub-size, 18px) / 1.35 var(--ptx-font);
+  transition: bottom 0.2s;
+}
+
+/* 控制栏显示时上移，避免被进度条遮住 */
+.layer[data-controls='true'] {
+  bottom: calc(7% + 46px);
+}
+
+.box {
+  max-width: 82%;
+  padding: 0.15em 0.55em 0.25em;
+  border-radius: 4px;
+  background: rgba(8, 8, 8, 0.75);
+  color: #ffffff;
+  text-align: center;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+}
+
+.original {
+  color: #ffffff;
+}
+
+.translated {
+  color: #fde68a;
+}
+
+.translated:empty {
+  display: none;
+}

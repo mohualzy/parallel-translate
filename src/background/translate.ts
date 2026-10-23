@@ -87,7 +87,7 @@ export async function translateSegments(segments: string[], page: PageContext): 
   const missing = translations.flatMap((t, i) => (t === null ? [i] : []));
   if (missing.length === 0) return { translations };
 
-  const prompt = { targetLang: settings.targetLang, stylePrompt: provider.prompt, title: page.title, summary: page.summary };
+  const prompt = { targetLang: settings.targetLang, stylePrompt: provider.prompt, title: page.title, summary: page.summary, subtitles: page.subtitles };
   const outcome = await translateBatch(
     missing.map((i) => segments[i]!),
     // 术语按实际发送的这一批匹配（补翻拆分后的小批次也只带自己用到的术语）

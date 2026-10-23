@@ -24,6 +24,8 @@ export interface PromptOptions {
   title?: string;
   /** 页面摘要（meta description），同样只作上下文 */
   summary?: string;
+  /** 视频字幕：提示模型相邻片段是连续台词 */
+  subtitles?: boolean;
   /** 本批命中的用户术语 */
   glossary?: GlossaryEntry[];
 }
@@ -89,6 +91,10 @@ export function buildMessages(segments: string[], opts: PromptOptions): ChatMess
   const contextLines = [
     title && (zh ? `网页标题（仅供参考，不要翻译）：${title}` : `Page title (context only, do not translate): ${title}`),
     summary && (zh ? `网页摘要（仅供参考，不要翻译）：${summary}` : `Page summary (context only, do not translate): ${summary}`),
+    opts.subtitles &&
+      (zh
+        ? '内容类型：视频字幕。相邻片段是连续的台词，一句话可能被拆在相邻片段里；译文要口语化、简洁，便于跟着画面阅读。'
+        : 'Content type: video subtitles. Adjacent segments are consecutive spoken lines and a sentence may span several segments; keep translations natural, spoken and concise.'),
   ].filter(Boolean);
   return [
     { role: 'system', content: system },
