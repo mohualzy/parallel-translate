@@ -214,8 +214,9 @@ export class InputTranslator {
     private readonly ctx: ContentScriptContext,
     private readonly settings: () => Settings,
   ) {
-    document.addEventListener('input', (e) => this.onInput(e as InputEvent), true);
-    document.addEventListener('keydown', (e) => this.onKeyDown(e), true);
+    const { signal } = ctx;
+    document.addEventListener('input', (e) => this.onInput(e as InputEvent), { capture: true, signal });
+    document.addEventListener('keydown', (e) => this.onKeyDown(e), { capture: true, signal });
   }
 
   /** Alt+I：只有拿着焦点的 frame 响应（命令会发给标签页的所有 frame） */

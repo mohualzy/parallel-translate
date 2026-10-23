@@ -5,6 +5,7 @@ import { SELECTION_PORT, type SelectionEvent, type SelectionRequest } from '@/li
 import { isSingleWord } from '@/lib/providers/prompt';
 import type { Settings } from '@/lib/settings';
 import { OWN_TAG } from './dom';
+import { onTeardown } from './lifecycle';
 import { isFromPageUi, mountPageUi, placeNear, type PageUi } from './ui/mount';
 import selectionCss from './ui/selection.css?inline';
 
@@ -52,10 +53,13 @@ export class SelectionTranslator {
     private readonly ctx: ContentScriptContext,
     private readonly settings: () => Settings,
   ) {
-    document.addEventListener('mouseup', (e) => this.onMouseUp(e), true);
-    document.addEventListener('mousedown', (e) => this.onMouseDown(e), true);
-    document.addEventListener('keydown', (e) => e.key === 'Escape' && this.closeAll(), true);
-    window.addEventListener('scroll', () => this.hideTrigger(), { capture: true, passive: true });
+    const { signal } = ctx;
+    document.addEventListener('mouseup', (e) => this.onMouseUp(e), { capture: true, signal });
+    document.addEventListener('mousedown', (e) => this.onMouseDown(e), { capture: true, signal });
+    document.addEventListener('keydown', (e) => e.key === 'Escape' && this.closeAll(), { capture: true, signal });
+    window.addEventListener('scroll', () => this.hideTrigger(), { capture: true, passive: true, signal });
+    // 失效时断开划词长连接（后台随之中止请求）
+    onTeardown(ctx, () => this.closeAll());
   }
 
   private onMouseUp(e: MouseEvent) {

@@ -4,11 +4,12 @@ import { defineContentScript } from 'wxt/utils/define-content-script';
 import { FloatBall } from '@/content/float-ball';
 import { setupHoverTrigger } from '@/content/hover';
 import { InputTranslator } from '@/content/input';
+import { onTeardown, takeOverPreviousInstance } from '@/content/lifecycle';
 import { SelectionTranslator } from '@/content/selection';
 import { PageTranslator } from '@/content/translator';
 import { showToast } from '@/content/ui/toast';
 import { baseLang, getLanguage } from '@/lib/languages';
-import { sendToBackground, type TabRequest } from '@/lib/messages';
+import { sendToBackground, type TabRequest, type TabState } from '@/lib/messages';
 import { getSettings, matchSite, onSettingsChanged, saveSettings } from '@/lib/settings';
 
 async function detectPageLang(): Promise<string> {
@@ -29,11 +30,14 @@ export default defineContentScript({
   // iframe 里的正文（嵌入的文章、评论区等）也要翻译；iframe 跟随顶层页面的开关
   allFrames: true,
   async main(ctx) {
+    // 扩展更新 / 重载后注入的新实例：让旧实例退场，记下它是否在翻译（见 docs/specs/2026-10-23-inject-open-tabs-design.md）
+    const resume = takeOverPreviousInstance(ctx);
     const isTop = window === window.top;
     // 太小的 iframe 多是广告或追踪像素，不翻译以免白花钱
     const tinyFrame = !isTop && (innerWidth < 120 || innerHeight < 60);
     const settings = await getSettings();
-    const translator = new PageTranslator(settings);
+    const translator = new PageTranslator(settings, ctx.signal);
+    onTeardown(ctx, () => translator.shutdown());
     if (isTop) {
       translator.onNothingToTranslate = () =>
         void showToast(ctx, `没有找到需要翻译的内容（页面可能已经是${getLanguage(translator.settings.targetLang).name}）`);
@@ -43,18 +47,20 @@ export default defineContentScript({
     }
     const floatBall = new FloatBall(ctx, translator);
     void floatBall.sync(settings);
-    onSettingsChanged((next) => {
+    const unwatchSettings = onSettingsChanged((next) => {
       translator.updateSettings(next);
       void floatBall.sync(next);
     });
+    onTeardown(ctx, unwatchSettings);
     setupHoverTrigger(
       () => translator.settings.hoverKey,
       (target, x, y) => translator.translateAt(target, x, y),
+      ctx.signal,
     );
     new SelectionTranslator(ctx, () => translator.settings);
     const input = new InputTranslator(ctx, () => translator.settings);
 
-    browser.runtime.onMessage.addListener((request: TabRequest, _sender, sendResponse) => {
+    const onMessage = (request: TabRequest, _sender: unknown, sendResponse: (state: TabState) => void) => {
       // 发给所有 frame，由拿着焦点的 frame 处理；不回复
       if (request.type === 'translate-input') {
         input.translateFocused();
@@ -80,7 +86,9 @@ export default defineContentScript({
       }
       sendResponse(translator.state());
       return false;
-    });
+    };
+    browser.runtime.onMessage.addListener(onMessage);
+    onTeardown(ctx, () => browser.runtime.onMessage.removeListener(onMessage));
 
     if (!isTop) {
       // iframe 加载时顶层页面已在翻译，就一起开启；网站规则、自动翻译只由顶层页面决定
@@ -90,6 +98,11 @@ export default defineContentScript({
     }
 
     translator.pageLang = await detectPageLang();
+    // 接续旧实例的翻译（段落都在缓存里，很快恢复且不产生费用）；这是用户自己开的，优先于网站规则
+    if (resume) {
+      translator.enable();
+      return;
+    }
 
     const host = location.hostname;
     if (matchSite(host, settings.neverTranslateSites)) return;

@@ -7,6 +7,7 @@ import { pageContext } from './page-context';
 import { deserialize, sameText, serialize } from './richtext';
 import { ensureShadowStyles } from './shadow-styles';
 import { TitleTranslator } from './title';
+import { TRANSLATING_ATTR } from './lifecycle';
 
 type State = 'idle' | 'queued' | 'loading' | 'done' | 'error';
 
@@ -103,9 +104,13 @@ export class PageTranslator {
   /** 当前扫描是否由 DOM 变化触发（首次整页扫描不算） */
   private dynamicScan = false;
 
-  constructor(public settings: Settings) {
+  constructor(
+    public settings: Settings,
+    /** 内容脚本失效（被新实例接替）时解绑页面监听 */
+    signal?: AbortSignal,
+  ) {
     this.classifier = classifierFor(settings);
-    document.addEventListener('click', (e) => this.onClick(e), true);
+    document.addEventListener('click', (e) => this.onClick(e), { capture: true, signal });
   }
 
   // ---------- 对外接口 ----------
@@ -122,6 +127,8 @@ export class PageTranslator {
   enable() {
     if (this.enabled || !document.body) return;
     this.enabled = true;
+    // 页面上的「正在翻译」标记：扩展更新后新注入的脚本据此恢复翻译（见 content/lifecycle.ts）
+    document.documentElement.setAttribute(TRANSLATING_ATTR, '');
     this.io = new IntersectionObserver((entries) => this.onIntersect(entries), { rootMargin: '600px 0px' });
     this.mo = new MutationObserver((records) => this.onMutations(records));
     this.mo.observe(document.body, { childList: true, subtree: true, characterData: true });
@@ -141,6 +148,16 @@ export class PageTranslator {
   disable() {
     document.documentElement.removeAttribute('data-ptx-mask');
     this.reset();
+  }
+
+  /**
+   * 内容脚本失效（被新实例接替）时调用：移除译文、断开观察，但留下「正在翻译」标记供新实例接续。
+   * 新实例的 WXT ctx 在构造时就会让同一隔离世界里的旧实例失效，早于新实例读取标记，所以不能在这里删掉它。
+   */
+  shutdown() {
+    const wasEnabled = this.enabled;
+    this.disable();
+    if (wasEnabled) document.documentElement.setAttribute(TRANSLATING_ATTR, '');
   }
 
   /**
@@ -345,6 +362,7 @@ export class PageTranslator {
     this.title.stop();
     this.generation++;
     this.enabled = false;
+    document.documentElement.removeAttribute(TRANSLATING_ATTR);
     if (wasEnabled) queueMicrotask(() => this.emitEnabled());
     this.io?.disconnect();
     this.mo?.disconnect();
