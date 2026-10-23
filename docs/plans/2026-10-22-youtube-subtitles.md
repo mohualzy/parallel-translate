@@ -15,3 +15,12 @@
   验证：截图里有原文 + 译文两行，且与画面时间对得上；如被 YouTube 拦截，如实记录到 TECH_NOTES。
 - [x] **6. 文档**：README 使用说明、DECISIONS、TECH_NOTES、PLANS 状态更新。
   验证：`git status` 干净，PLANS 中该功能行链接到本计划并标记完成。
+
+## 追加：优先人工字幕 + 标注自动字幕（实测反馈）
+
+- [ ] **7. 挑选人工字幕**：`pickManualTrack` 纯函数（同语言 → 英文 → 任意；排除目标语言）。
+  验证：`pnpm vitest run tests/unit/subtitles.test.ts` 通过。
+- [ ] **8. 钩子读取字幕轨并按指令切换**：旁听到自动字幕时附带字幕轨列表；收到 `select-track` 指令时调用 `setOption('captions', 'track', …)`。
+  验证：由第 9 步的 E2E 覆盖。
+- [ ] **9. 内容脚本切换与标注**：每个视频最多切换一次；只有自动字幕时字幕层显示「自动字幕」。
+  验证：`just e2e` 中「有人工字幕时切到人工字幕」「只有自动字幕时显示标记」两个用例通过。
