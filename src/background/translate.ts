@@ -4,7 +4,14 @@ import { translateBatch } from '@/lib/batch';
 import { matchGlossary, parseGlossary, type GlossaryEntry } from '@/lib/glossary';
 import type { PageContext, SelectionRequest, TranslateResult } from '@/lib/messages';
 import { buildMessages, createClient, HttpError, parseSegments, PROMPT_VERSION, type ChatMessage } from '@/lib/providers';
-import { buildSelectionMessages, SELECTION_PROMPT_VERSION, stripReasoning } from '@/lib/providers/prompt';
+import {
+  buildInputMessages,
+  buildSelectionMessages,
+  cleanInputOutput,
+  INPUT_PROMPT_VERSION,
+  SELECTION_PROMPT_VERSION,
+  stripReasoning,
+} from '@/lib/providers/prompt';
 import { getActiveProvider, getSettings, type ProviderConfig, type Settings } from '@/lib/settings';
 import * as cache from './cache';
 
@@ -151,6 +158,27 @@ export async function translateSelection(
     if (!text) throw new Error('模型返回了空内容');
     await cache.setMany([[key, text]]).catch(() => undefined);
     return text;
+  } catch (err) {
+    throw new Error(describeError(err, provider));
+  }
+}
+
+/** 输入框翻译：用户在等着发消息，和划词一样不排队、不重试；结果缓存（改几个字再翻也只花一次钱给新内容） */
+export async function translateInput(text: string): Promise<string> {
+  const [settings, provider] = await Promise.all([getSettings(), requireProvider()]);
+  const key = await cache.sha256(
+    JSON.stringify(['input', provider.baseURL, provider.model, settings.inputTargetLang, INPUT_PROMPT_VERSION, text]),
+  );
+  const hit = (await cache.getMany([key])).get(key);
+  if (hit !== undefined) return hit;
+  try {
+    const raw = await keepAlive(() =>
+      createClient(provider).complete(buildInputMessages(text, settings.inputTargetLang), AbortSignal.timeout(provider.timeoutMs)),
+    );
+    const translated = cleanInputOutput(raw);
+    if (!translated) throw new Error('模型返回了空内容');
+    await cache.setMany([[key, translated]]).catch(() => undefined);
+    return translated;
   } catch (err) {
     throw new Error(describeError(err, provider));
   }

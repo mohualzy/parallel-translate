@@ -33,6 +33,11 @@ export default defineConfig({
         suggested_key: { default: 'Alt+W' },
         description: '立即翻译整页 / 还原',
       },
+      // Alt+I 把输入框里的内容译成「输入框翻译」的目标语言
+      'translate-input': {
+        suggested_key: { default: 'Alt+I' },
+        description: '翻译当前输入框',
+      },
       // 以下不设默认按键，避免与网页或其他扩展冲突，可在 chrome://extensions/shortcuts 自行绑定
       'toggle-display-mode': {
         description: '切换双语对照 / 仅译文',

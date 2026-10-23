@@ -179,6 +179,27 @@ test('真实模型：遵守术语表（故意指定不常见译法）', async ()
   }
 });
 
+test('真实模型：输入框翻译成英文，保留换行、@提及和链接，只输出译文', async () => {
+  test.setTimeout(120_000);
+  const page = await context.newPage();
+  await page.goto(`${server.url}/input.html`);
+  await page.waitForTimeout(300);
+  const ta = page.locator('#ta');
+  await ta.fill('@小明 明天下午三点开会，记得带上周报。\n会议链接：https://example.com/meet/42');
+  await ta.press('End');
+  await page.keyboard.type('   ');
+  await expect(ta).not.toHaveValue(/会议链接/, { timeout: 60_000 });
+  const value = await ta.inputValue();
+  // \u4eba\u540d\u53ef\u80fd\u6309\u539f\u6837\u4fdd\u7559\uff08@\u5c0f\u660e\uff09\uff0c\u53ea\u68c0\u67e5\u6b63\u6587\u5df2\u8bd1\u6210\u82f1\u6587
+  expect(value).not.toMatch(/\u660e\u5929|\u5468\u62a5/);
+  expect(value).toMatch(/meeting/i);
+  expect(value).toContain('https://example.com/meet/42');
+  expect(value).toContain('@');
+  expect(value).toContain('\n');
+  expect(value).not.toMatch(/<\/?text>/);
+  await page.close();
+});
+
 test('真实模型：设置页测试连接成功', async () => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/options.html`);

@@ -1,7 +1,7 @@
 import { browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
 import * as cache from '@/background/cache';
-import { listModels, testProvider, translateSegments, translateSelection } from '@/background/translate';
+import { listModels, testProvider, translateInput, translateSegments, translateSelection } from '@/background/translate';
 import {
   SELECTION_PORT,
   type BackgroundRequest,
@@ -33,6 +33,8 @@ async function handle(
         null) as TabState | null;
     case 'translate':
       return translateSegments(request.segments, request.page);
+    case 'translate-input':
+      return translateInput(request.text);
     case 'test-provider':
       return testProvider(request.provider);
     case 'list-models':
@@ -65,6 +67,11 @@ export default defineBackground(() => {
   });
 
   browser.commands.onCommand.addListener((command, tab) => {
+    if (command === 'translate-input') {
+      // 焦点可能在 iframe 的输入框里：发给所有 frame，由拿着焦点的那个处理
+      if (tab?.id !== undefined) void browser.tabs.sendMessage(tab.id, { type: 'translate-input' } satisfies TabRequest).catch(() => undefined);
+      return;
+    }
     const requests: Record<string, TabRequest> = {
       'toggle-translate': { type: 'toggle' },
       'translate-whole-page': { type: 'translate-whole-page' },

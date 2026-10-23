@@ -18,6 +18,10 @@ export interface MockServer {
   failWith: number | null;
   /** 划词翻译请求：选中文本、是否词典模式、带上的语境 */
   selections: { text: string; word: boolean; context: string }[];
+  /** 输入框翻译请求的原文 */
+  inputs: string[];
+  /** 大于 0 时每个请求先等这么久再响应（模拟慢模型） */
+  delayMs: number;
   /** 匹配的段原样返回（模拟模型对人名、产品名不做翻译） */
   echoWhen: ((segment: string) => boolean) | null;
   /** 多段请求时故意漏掉匹配的段，模拟模型漏段 */
@@ -75,7 +79,7 @@ function extractSegments(content: string): string[] {
 }
 
 export async function startMockServer(): Promise<MockServer> {
-  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], systems: [], users: [], selections: [], failWith: null, echoWhen: null, dropWhen: null };
+  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], systems: [], users: [], selections: [], inputs: [], delayMs: 0, failWith: null, echoWhen: null, dropWhen: null };
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -118,22 +122,27 @@ export async function startMockServer(): Promise<MockServer> {
         return;
       }
       const body = JSON.parse(await readBody(req));
+      if (state.delayMs > 0) await new Promise((r) => setTimeout(r, state.delayMs));
       const user = body.messages.at(-1).content as string;
+      const system = body.messages[0].content as string;
       const segments = extractSegments(user);
       // 划词翻译：<text> 包着选中文本
       const selected = segments.length === 0 ? /<text>([\s\S]*?)<\/text>/.exec(user)?.[1] : undefined;
-      if (selected !== undefined) {
+      // 输入框翻译与划词一样用 <text>，按 system prompt 区分
+      if (selected !== undefined && /message the user wrote|用户写的消息/.test(system)) {
+        state.inputs.push(selected);
+      } else if (selected !== undefined) {
         state.selections.push({
           text: selected,
-          word: (body.messages[0].content as string).includes('词典'),
+          word: system.includes('词典'),
           context: /<context>([\s\S]*?)<\/context>/.exec(user)?.[1] ?? '',
         });
       } else {
         state.batches.push(segments);
-        state.systems.push(body.messages[0].content as string);
+        state.systems.push(system);
         state.users.push(user);
       }
-      const output = selected !== undefined ? `${PREFIX}${selected}` : segments
+      const output = selected !== undefined ? `${state.echoWhen?.(selected) ? '' : PREFIX}${selected}` : segments
         .map((s, i) => (segments.length > 1 && state.dropWhen?.(s) ? '' : `<s id="${i}">${state.echoWhen?.(s) ? '' : PREFIX}${s}</s>`))
         .join('\n');
 

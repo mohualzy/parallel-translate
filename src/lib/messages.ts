@@ -14,6 +14,8 @@ export interface PageContext {
 
 export type BackgroundRequest =
   | { type: 'translate'; segments: string[]; page: PageContext }
+  /** 输入框翻译：译成 inputTargetLang */
+  | { type: 'translate-input'; text: string }
   | { type: 'test-provider'; provider: ProviderConfig }
   | { type: 'list-models'; provider: ProviderConfig }
   | { type: 'clear-cache' }
@@ -32,6 +34,7 @@ export interface TranslateResult {
 
 export interface BackgroundResponses {
   translate: TranslateResult;
+  'translate-input': string;
   'test-provider': { text: string; ms: number };
   'list-models': string[];
   'clear-cache': null;
@@ -74,6 +77,8 @@ export type TabRequest =
   | { type: 'translate-whole-page' }
   | { type: 'toggle-display-mode' }
   | { type: 'toggle-mask' }
+  /** Alt+I：发给所有 frame，由焦点所在 frame 翻译其中的输入框 */
+  | { type: 'translate-input' }
   | { type: 'get-state' }
   /** 后台转发给 iframe：跟随顶层页面开 / 关翻译 */
   | { type: 'set-enabled'; enabled: boolean };

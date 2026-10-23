@@ -3,6 +3,7 @@ import { browser } from 'wxt/browser';
 import { defineContentScript } from 'wxt/utils/define-content-script';
 import { FloatBall } from '@/content/float-ball';
 import { setupHoverTrigger } from '@/content/hover';
+import { InputTranslator } from '@/content/input';
 import { SelectionTranslator } from '@/content/selection';
 import { PageTranslator } from '@/content/translator';
 import { showToast } from '@/content/ui/toast';
@@ -51,8 +52,14 @@ export default defineContentScript({
       (target, x, y) => translator.translateAt(target, x, y),
     );
     new SelectionTranslator(ctx, () => translator.settings);
+    const input = new InputTranslator(ctx, () => translator.settings);
 
     browser.runtime.onMessage.addListener((request: TabRequest, _sender, sendResponse) => {
+      // 发给所有 frame，由拿着焦点的 frame 处理；不回复
+      if (request.type === 'translate-input') {
+        input.translateFocused();
+        return false;
+      }
       if (!isTop) {
         // iframe 只跟随顶层页面开关，不回复任何消息（弹窗拿到的状态始终来自顶层页面）
         if (request.type === 'set-enabled' && !tinyFrame) {

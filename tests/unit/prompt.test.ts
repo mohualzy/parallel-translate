@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildMessages,
+  buildInputMessages,
   buildSelectionMessages,
+  cleanInputOutput,
   DEFAULT_STYLE_PROMPT,
   DEFAULT_STYLE_PROMPT_ZH,
   isSingleWord,
@@ -60,6 +62,23 @@ describe('划词 prompt', () => {
     const [sentSys, sentUser] = buildSelectionMessages('Hello world.', { targetLang: 'en', word: false });
     expect(sentSys?.content).toContain('Output only the translation');
     expect(sentUser?.content).toBe('<text>Hello world.</text>');
+  });
+});
+
+describe('输入框 prompt', () => {
+  it('按输入框目标语言选 prompt 语言，原文只放在 <text> 里', () => {
+    const [enSys, enUser] = buildInputMessages('你好，明天见', 'en');
+    expect(enSys?.content).toContain('native English translator');
+    expect(enSys?.content).toContain('@mentions');
+    expect(enSys?.content).not.toContain('你好');
+    expect(enUser?.content).toBe('<text>你好，明天见</text>');
+    const [zhSys] = buildInputMessages('See you', 'zh-CN');
+    expect(zhSys?.content).toContain('简体中文母语译者');
+  });
+
+  it('cleanInputOutput：去掉思考过程与照抄的 <text> 标签，保留内部换行', () => {
+    expect(cleanInputOutput('<think>hmm</think>\n<text>Hi\nthere</text>\n')).toBe('Hi\nthere');
+    expect(cleanInputOutput('  See you tomorrow  ')).toBe('See you tomorrow');
   });
 });
 

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Input Fixture</title>
+    <style>
+      body { font-size: 16px; max-width: 720px; margin: 20px auto; }
+      textarea, input, [contenteditable] { display: block; width: 100%; margin: 12px 0; }
+      [contenteditable] { min-height: 40px; border: 1px solid #999; }
+    </style>
+  </head>
+  <body>
+    <textarea id="ta" rows="4"></textarea>
+    <input id="in" />
+    <div id="ce" contenteditable="true"></div>
+    <!-- 仿 Lexical：自己处理粘贴（按行建段落）；insertText 会丢掉换行 -->
+    <div id="rich" contenteditable="true"></div>
+    <input id="pw" type="password" />
+    <!-- 代码编辑器里的 textarea：连按空格是缩进，不触发 -->
+    <div class="monaco-editor"><textarea id="code"></textarea></div>
+    <script>
+      const rich = document.getElementById('rich');
+      rich.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const lines = e.clipboardData.getData('text/plain').split('\n');
+        rich.replaceChildren(...lines.map((l) => Object.assign(document.createElement('p'), { textContent: l })));
+      });
+      rich.addEventListener('beforeinput', (e) => {
+        if (e.inputType !== 'insertText') return;
+        e.preventDefault();
+        rich.replaceChildren(Object.assign(document.createElement('p'), { textContent: (e.data || '').replace(/\n/g, '') }));
+      });
+    </script>
+  </body>
+</html>

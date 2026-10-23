@@ -30,6 +30,10 @@ export interface Settings {
   translateTitle: boolean;
   /** YouTube 打开字幕时显示双语字幕 */
   youtubeSubtitles: boolean;
+  /** 输入框翻译（Alt+I / 连按三次空格）的目标语言，与网页翻译的目标语言无关 */
+  inputTargetLang: string;
+  /** 输入框末尾连按三次空格触发翻译 */
+  inputSpaceTrigger: boolean;
   /** 页面语言不是目标语言时自动翻译 */
   autoTranslateForeign: boolean;
   alwaysTranslateSites: string[];
@@ -75,6 +79,8 @@ export const DEFAULT_SETTINGS: Settings = {
   unclamp: true,
   translateTitle: true,
   youtubeSubtitles: true,
+  inputTargetLang: 'en',
+  inputSpaceTrigger: true,
   autoTranslateForeign: false,
   alwaysTranslateSites: [],
   neverTranslateSites: [],

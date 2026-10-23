@@ -244,6 +244,7 @@ function initPreferences() {
   fillSelect($<HTMLSelectElement>('#pref-style'), styleOptions(), settings.translationStyle);
   fillSelect($<HTMLSelectElement>('#pref-hover'), hoverKeyOptions(), settings.hoverKey);
   fillSelect($<HTMLSelectElement>('#pref-selection'), selectionModeOptions(), settings.selectionMode);
+  fillSelect($<HTMLSelectElement>('#pref-input-target'), languageOptions(), settings.inputTargetLang);
 
   for (const el of document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('[data-setting]')) {
     const key = el.dataset.setting as keyof Settings;

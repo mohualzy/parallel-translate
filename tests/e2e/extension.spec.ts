@@ -745,6 +745,112 @@ test('划词翻译：单词走词典模式并带上段落语境；中文选区�
   await page.close();
 });
 
+/** 模拟 Alt+I：后台把命令发给标签页的所有 frame（与 background.ts 一致） */
+async function translateInput(page: Page) {
+  await sw.evaluate(async (target) => {
+    const tab = (await chrome.tabs.query({})).find((t) => t.url === target);
+    await chrome.tabs.sendMessage(tab!.id!, { type: 'translate-input' }).catch(() => undefined);
+  }, page.url());
+}
+
+const toast = (page: Page) => page.locator('ptx-ui-toast .toast');
+
+test('输入框翻译：末尾连按三次空格译成英文并写回，Ctrl+Z 撤销；contenteditable 同样可用', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/input.html`);
+  await page.waitForTimeout(300);
+  const before = server.inputs.length;
+
+  const ta = page.locator('#ta');
+  await ta.click();
+  await page.keyboard.type('你好世界');
+  await page.keyboard.type('   ');
+  await expect(ta).toHaveValue('【译】你好世界');
+  expect(server.inputs.slice(before)).toEqual(['你好世界']);
+  await expect(toast(page)).toContainText('已翻译成 English');
+  // 写回走 execCommand，进入浏览器原生撤销栈
+  await page.keyboard.press('Control+z');
+  await expect(ta).toHaveValue('你好世界   ');
+
+  const ce = page.locator('#ce');
+  await ce.click();
+  await page.keyboard.type('早上好');
+  await page.keyboard.type('   ');
+  await expect(ce).toHaveText('【译】早上好');
+
+  // 多行：普通 contenteditable 不处理粘贴，走 insertText，换行保留
+  await ce.evaluate((el) => (el.innerHTML = '<div>第一行</div><div>第二行</div>'));
+  await ce.focus();
+  await translateInput(page);
+  await expect.poll(() => ce.evaluate((el) => (el as HTMLElement).innerText.replace(/\n+/g, '\n'))).toBe('【译】第一行\n第二行');
+
+  // 多行：自己处理粘贴的编辑器（仿 Lexical，insertText 会丢换行）先走粘贴
+  const rich = page.locator('#rich');
+  await rich.evaluate((el) => (el.innerHTML = '<p>你好</p><p>再见</p>'));
+  await rich.focus();
+  await translateInput(page);
+  await expect(rich.locator('p')).toHaveText(['【译】你好', '再见']);
+  await page.close();
+});
+
+test('输入框翻译：Alt+I 只替换选中的部分；已是目标语言时不写回；密码框不翻', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/input.html`);
+  await page.waitForTimeout(300);
+
+  const input = page.locator('#in');
+  await input.fill('Say 你好 please');
+  await input.evaluate((el: HTMLInputElement) => el.setSelectionRange(4, 6));
+  await translateInput(page);
+  await expect(input).toHaveValue('Say 【译】你好 please');
+
+  server.echoWhen = (s) => s === 'Already English';
+  await input.fill('Already English');
+  await translateInput(page);
+  await expect(toast(page)).toContainText('内容已经是 English');
+  await expect(input).toHaveValue('Already English');
+  server.echoWhen = null;
+
+  const before = server.inputs.length;
+  await page.locator('#pw').fill('secret');
+  await translateInput(page);
+  await expect(toast(page)).toContainText('请先点进一个输入框');
+  expect(server.inputs.length).toBe(before);
+  await page.close();
+});
+
+test('输入框翻译：行首缩进、代码编辑器、关闭开关时连按空格不触发；请求期间内容变了不写回', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/input.html`);
+  await page.waitForTimeout(300);
+  const before = server.inputs.length;
+
+  const ta = page.locator('#ta');
+  await ta.click();
+  await page.keyboard.type('line one');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('   ');
+  await page.locator('#code').click();
+  await page.keyboard.type('const a = 1;   ');
+  await setSettings({ inputSpaceTrigger: false });
+  await page.locator('#in').click();
+  await page.keyboard.type('你好   ');
+  await page.waitForTimeout(500);
+  expect(server.inputs.length).toBe(before);
+  await setSettings({ inputSpaceTrigger: true });
+
+  server.delayMs = 800;
+  await ta.fill('');
+  await ta.click();
+  await page.keyboard.type('慢一点   ');
+  await page.waitForTimeout(200);
+  await page.keyboard.type('还在写');
+  await expect(toast(page)).toContainText('输入框内容已改变');
+  await expect(ta).toHaveValue('慢一点   还在写');
+  server.delayMs = 0;
+  await page.close();
+});
+
 async function storedSettings(): Promise<Record<string, unknown>> {
   return sw.evaluate(async () => (await chrome.storage.local.get('settings')).settings as Record<string, unknown>);
 }
