@@ -98,3 +98,9 @@
   - `getOption('captions', 'tracklist')` 在只有自动字幕的视频上返回空数组，`getPlayerResponse().captions.playerCaptionsTracklistRenderer.captionTracks` 才可靠（字段名 `vssId`）。
   - `setOption('captions', 'track', { languageCode: 'en' })` 在同语言同时有人工字幕和自动字幕时会选中人工字幕；想切到自动字幕（`a.en`），用这几种写法都会被改回人工字幕。
   - **字幕语言偏好是全局的**：在任意视频上 `setOption` 切换语言，会改变用户在所有视频上的默认字幕语言。之后打开只有日语自动字幕的视频，播放器会自动翻译成英文（请求带 `tlang=en`）。测试时改过偏好，必须改回去。
+
+## 可见性与排版
+
+- IntersectionObserver：目标被祖先（`overflow: hidden; height: 0` 的折叠容器）裁剪成零面积时，若贴着边，仍会报告 `isIntersecting: true`。判断「真正可见」要看 `intersectionRect` 面积是否大于 0（目标本身面积为 0 的锚点除外）。
+- `font-size: 0` 会让容器上所有用 em / ch 表示的尺寸（宽度、max-width、内边距、间距）一起归零，所以仅译文模式不能假设隐藏原文不影响容器尺寸。
+- 后台标签页不执行 `requestAnimationFrame`，也不重绘：依赖 rAF 的排版检查要等标签页切到前台才会运行；通过 CDP 截后台标签页，拿到的是旧画面，验证要以 DOM 状态为准。

@@ -62,7 +62,7 @@ Reason: 构建 Chrome/Edge 版到 `.output/chrome-mv3`
 
 - **快捷键没反应**：如果同时装着沉浸式翻译，`Alt+A` 会冲突，在 `chrome://extensions/shortcuts` 里改掉其中一个。
 - **某些页面无法翻译**：浏览器内置页面（`chrome://`）、扩展商店不允许扩展运行。
-- **按钮、导航没有被翻译**：默认跳过短的界面文字，避免撑乱布局。需要时可以悬停按 Ctrl 单独翻译，或在设置里关闭「跳过按钮、标签页、导航链接等短界面文字」。
+- **按钮、导航没有被翻译**：双语对照模式默认跳过短的界面文字和按钮，避免撑乱布局；切换到「仅译文」模式会原地翻译它们（按钮照常可点）。也可以悬停按 Ctrl 单独翻译，或在设置里关闭「双语对照时跳过…」。
 - **Ollama 返回 403**：Ollama 默认拒绝来自扩展的请求，启动前设置环境变量 `OLLAMA_ORIGINS=chrome-extension://*`。
 - **DeepSeek**：当前模型是 `deepseek-flash` / `deepseek-v4-pro`，默认会推理。预设已自动填好 `{"thinking": {"type": "disabled"}}`，实测输出 token 减少约 75%；手动添加时记得加上。
 - **推理模型太慢、太贵**：在「高级选项 → 额外请求参数」里关闭思考，参数名因服务而异，例如通义 `{"enable_thinking": false}`、Ollama `{"think": false}`、OpenAI `{"reasoning_effort": "minimal"}`，以服务商文档为准。
