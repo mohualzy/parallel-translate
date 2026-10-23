@@ -45,6 +45,11 @@ const SETTLE_MS = 1000;
 /** 整页可翻译文字少于这个字数时提示「可能已是目标语言」 */
 const SAME_LANGUAGE_MAX_CHARS = 100;
 
+function classifierFor(settings: Settings): DomClassifier {
+  const translateControls = settings.displayMode === 'translation';
+  return new DomClassifier(buildExcludeSelector(settings.excludeSelectors, translateControls), translateControls);
+}
+
 function isClipping(el: Element): boolean {
   const cs = getComputedStyle(el);
   if (/auto|scroll/.test(`${cs.overflowX} ${cs.overflowY}`)) return false;
@@ -99,7 +104,7 @@ export class PageTranslator {
   private dynamicScan = false;
 
   constructor(public settings: Settings) {
-    this.classifier = new DomClassifier(buildExcludeSelector(settings.excludeSelectors));
+    this.classifier = classifierFor(settings);
     document.addEventListener('click', (e) => this.onClick(e), true);
   }
 
@@ -170,15 +175,15 @@ export class PageTranslator {
     const prev = this.settings;
     this.settings = next;
     const excludeChanged = prev.excludeSelectors.join('\n') !== next.excludeSelectors.join('\n');
-    if (excludeChanged) this.classifier = new DomClassifier(buildExcludeSelector(next.excludeSelectors));
+    const modeChanged = prev.displayMode !== next.displayMode;
+    if (excludeChanged || modeChanged) this.classifier = classifierFor(next);
 
     // 影响译文内容的设置：清空重来（命中缓存的段落会很快回来）
     const contentChanged = (['targetLang', 'richText', 'activeProviderId', 'skipShortUI'] as const).some(
       (k) => prev[k] !== next[k],
     );
-    // 开着「跳过界面文字」时，切换显示方式会改变哪些段落需要翻译
-    const modeChangesScope = next.skipShortUI && prev.displayMode !== next.displayMode;
-    if (excludeChanged || contentChanged || modeChangesScope) {
+    // 切换显示方式会改变翻译范围：仅译文模式下按钮、短界面文字也要翻译（双语对照时跳过）
+    if (excludeChanged || contentChanged || modeChanged) {
       const wasEnabled = this.enabled;
       this.reset();
       if (wasEnabled) this.enable();

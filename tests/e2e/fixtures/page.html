@@ -10,7 +10,7 @@
     </style>
   </head>
   <body>
-    <nav style="display: flex; gap: 12px"><a href="#" id="nav-home">Home</a><a href="#" id="nav-pricing">Pricing</a></nav>
+    <nav style="display: flex; gap: 12px"><a href="#" id="nav-home">Home</a><a href="#" id="nav-pricing">Pricing</a><button type="button" id="nav-group" onclick="this.dataset.clicks = (Number(this.dataset.clicks) || 0) + 1">Storage settings</button></nav>
     <h1 id="title">Getting Started</h1>
     <p id="p-sr">Visible sentence here<span class="a11y-text"> hidden helper text</span>.</p>
     <p id="p-link">Read <a href="/docs" id="docs-link">the documentation</a> before running <code>npm install</code>.</p>

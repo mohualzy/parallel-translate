@@ -46,10 +46,6 @@ const BUILTIN_EXCLUDE = [
   '.katex',
   '.MathJax',
   'mjx-container',
-  '[role="button"]',
-  '[role="tab"]',
-  '[role="menuitem"]',
-  '[role="switch"]',
   // 图标字体靠文字连字显示图标（如 <span class="material-icons">search</span>），翻译会把图标变成文字
   '.material-icons',
   '.material-icons-outlined',
@@ -60,6 +56,9 @@ const BUILTIN_EXCLUDE = [
   'i.fa',
   'i[class^="fa-"]',
 ];
+
+/** 控件：双语对照时整体跳过（插入译文会撑坏按钮）；仅译文模式原地替换文字，当普通容器翻译 */
+const CONTROL_ROLES = ['[role="button"]', '[role="tab"]', '[role="menuitem"]', '[role="switch"]'];
 
 /** 只给屏幕阅读器的隐藏文字：看不见，翻译出来反而会显示在页面上 */
 const VISUALLY_HIDDEN = '.sr-only,.visually-hidden,.visuallyhidden,.screen-reader-text,.a11y-hidden';
@@ -119,7 +118,7 @@ export function looksLikeUIChrome(container: Element, nodes: Node[], plain: stri
 }
 
 /** 过滤掉语法错误的用户选择器，避免 matches() 抛错导致整页失效 */
-export function buildExcludeSelector(extra: string[]): string {
+export function buildExcludeSelector(extra: string[], translateControls = false): string {
   const valid = extra
     .map((s) => s.trim())
     .filter((s) => {
@@ -131,7 +130,7 @@ export function buildExcludeSelector(extra: string[]): string {
         return false;
       }
     });
-  return [...BUILTIN_EXCLUDE, ...valid].join(',');
+  return [...BUILTIN_EXCLUDE, ...(translateControls ? [] : CONTROL_ROLES), ...valid].join(',');
 }
 
 /**
@@ -160,7 +159,11 @@ export function composedChildren(el: Element): Node[] {
 export class DomClassifier {
   private cache = new WeakMap<Node, NodeKind>();
 
-  constructor(private readonly excludeSelector: string) {}
+  constructor(
+    private readonly excludeSelector: string,
+    /** 仅译文模式：按钮等控件当普通容器进入翻译（见 CONTROL_ROLES） */
+    private readonly translateControls = false,
+  ) {}
 
   /** 每轮扫描前调用：样式可能已变化，旧分类作废 */
   reset() {
@@ -209,6 +212,8 @@ export class DomClassifier {
     }
     const inlineLevel = display.startsWith('inline') || display === 'contents' || display.startsWith('ruby');
 
+    // 仅译文模式下按钮当容器进入，文字在按钮内部原地替换，按钮本身照常可点
+    if (tag === 'button' && this.translateControls) return this.isExcluded(el) ? 'skip' : 'block';
     if (OPAQUE_TAGS.has(tag) || this.isExcluded(el)) return inlineLevel ? 'opaque' : 'skip';
     if (!inlineLevel) return 'block';
     if (el.querySelector(BLOCK_SELECTOR)) return 'block';

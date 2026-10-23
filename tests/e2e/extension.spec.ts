@@ -610,14 +610,22 @@ test('仅译文模式下导航等短界面文字照常翻译；双语对照下�
   await toggle(page);
   await expect(translation(page, '#p-second')).toContainText('【译】');
   await expect(page.locator('#nav-home ptx-t')).toHaveCount(0);
+  await expect(page.locator('#nav-group ptx-t')).toHaveCount(0);
   await setSettings({ displayMode: 'translation' });
   try {
     await expect(translation(page, '#nav-home')).toContainText('【译】Home');
     await expect(page.locator('#nav-home')).toHaveAttribute('data-ptx-hide', '');
+    // 按钮（如 Cloudflare 侧栏的可展开分组）：文字在按钮内部原地替换，点击照常生效
+    const group = page.locator('#nav-group');
+    await expect(translation(page, '#nav-group')).toContainText('【译】Storage settings');
+    await expect(group).toHaveAttribute('data-ptx-hide', '');
+    await translation(page, '#nav-group').click();
+    await expect(group).toHaveAttribute('data-clicks', '1');
   } finally {
     await setSettings({ displayMode: 'bilingual' });
   }
   await expect(page.locator('#nav-home ptx-t')).toHaveCount(0);
+  await expect(page.locator('#nav-group ptx-t')).toHaveCount(0);
   await page.close();
 });
 
