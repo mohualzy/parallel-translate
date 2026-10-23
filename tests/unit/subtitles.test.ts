@@ -66,8 +66,15 @@ describe('parseJson3：自动字幕合句', () => {
     ]);
   });
 
+  it('日文、中文自动字幕的词之间不加空格', () => {
+    const body = JSON.stringify({
+      events: [words(0, [['これ', 0], ['で', 100], ['いい', 200], ['[音楽]', 300]])],
+    });
+    expect(parseJson3(body, true)).toEqual([{ start: 0, end: 2200, text: 'これでいい' }]);
+  });
+
   it('没有标点也没有停顿时，按最大词数断句', () => {
-    const list = Array.from({ length: 30 }, (_, i): [string, number] => [`w${i}`, i * 100]);
+    const list = Array.from({ length: 30 }, (_, i): [string, number] => [`${i ? ' ' : ''}w${i}`, i * 100]);
     const cues = parseJson3(JSON.stringify({ events: [words(0, list)] }), true);
     expect(cues.map((c) => c.text.split(' ').length)).toEqual([18, 12]);
   });

@@ -90,8 +90,9 @@ function mergeAsrWords(events: Json3Event[]): Cue[] {
     // aAppend 事件只是换行，不含新词
     if (!e.segs || e.tStartMs === undefined || e.aAppend) continue;
     for (const seg of e.segs) {
-      const text = cleanCueText(seg.utf8 ?? '');
-      if (text) words.push({ text, time: e.tStartMs + (seg.tOffsetMs ?? 0) });
+      // 保留原始的前导空格：英文词自带空格（" guys"），日文、中文的词之间本来就没有空格
+      const raw = (seg.utf8 ?? '').replace(/\n/g, ' ');
+      if (cleanCueText(raw)) words.push({ text: raw, time: e.tStartMs + (seg.tOffsetMs ?? 0) });
     }
   }
 
@@ -102,7 +103,7 @@ function mergeAsrWords(events: Json3Event[]): Cue[] {
     const next = words[i + 1];
     if (
       !next ||
-      SENTENCE_END.test(word.text) ||
+      SENTENCE_END.test(word.text.trim()) ||
       next.time - word.time > ASR_PAUSE_MS ||
       current.length >= ASR_MAX_WORDS
     ) {
@@ -118,7 +119,7 @@ function mergeAsrWords(events: Json3Event[]): Cue[] {
     return {
       start,
       end: nextStart !== undefined ? Math.min(nextStart, last + ASR_TAIL_MS * 2) : last + ASR_TAIL_MS,
-      text: sentence.map((w) => w.text).join(' '),
+      text: cleanCueText(sentence.map((w) => w.text).join('')),
     };
   });
 }
