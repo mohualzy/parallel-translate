@@ -604,6 +604,23 @@ test('仅译文模式：用 ch 限宽的段落隐藏原文会被挤成竖排，�
   await page.close();
 });
 
+test('仅译文模式下导航等短界面文字照常翻译；双语对照下仍跳过', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  await toggle(page);
+  await expect(translation(page, '#p-second')).toContainText('【译】');
+  await expect(page.locator('#nav-home ptx-t')).toHaveCount(0);
+  await setSettings({ displayMode: 'translation' });
+  try {
+    await expect(translation(page, '#nav-home')).toContainText('【译】Home');
+    await expect(page.locator('#nav-home')).toHaveAttribute('data-ptx-hide', '');
+  } finally {
+    await setSettings({ displayMode: 'bilingual' });
+  }
+  await expect(page.locator('#nav-home ptx-t')).toHaveCount(0);
+  await page.close();
+});
+
 test('悬停翻译：鼠标停在段落上单按 Ctrl 翻译/收起这一段', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);

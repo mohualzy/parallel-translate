@@ -176,7 +176,9 @@ export class PageTranslator {
     const contentChanged = (['targetLang', 'richText', 'activeProviderId', 'skipShortUI'] as const).some(
       (k) => prev[k] !== next[k],
     );
-    if (excludeChanged || contentChanged) {
+    // 开着「跳过界面文字」时，切换显示方式会改变哪些段落需要翻译
+    const modeChangesScope = next.skipShortUI && prev.displayMode !== next.displayMode;
+    if (excludeChanged || contentChanged || modeChangesScope) {
       const wasEnabled = this.enabled;
       this.reset();
       if (wasEnabled) this.enable();
@@ -254,7 +256,9 @@ export class PageTranslator {
 
   private isTranslatable(run: Run, plain: string, manual: boolean): boolean {
     if (!this.isWorthTranslating(plain)) return false;
-    return manual || !this.settings.skipShortUI || !looksLikeUIChrome(run.container, run.nodes, plain);
+    // 跳过界面文字是为了防止双语对照把按钮、导航撑乱；仅译文模式是原地替换，不会撑乱，照常翻译
+    if (manual || !this.settings.skipShortUI || this.settings.displayMode !== 'bilingual') return true;
+    return !looksLikeUIChrome(run.container, run.nodes, plain);
   }
 
   private register(run: Run, manual = false): Paragraph | undefined {
