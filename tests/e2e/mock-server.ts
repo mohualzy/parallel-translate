@@ -44,8 +44,21 @@ export const MOCK_CUES = [
   { start: 300_000, end: 303_000, text: 'A far away line near the end of the video.' },
 ];
 
-function timedtext(videoId: string) {
-  const cues = videoId === 'second' ? [{ start: 0, end: 120_000, text: 'Second video subtitle line.' }] : MOCK_CUES;
+function timedtext(videoId: string, asr: boolean) {
+  // 自动生成字幕：逐词带时间偏移（英文词自带前导空格）
+  if (asr) {
+    const words = ['auto', ' generated', ' words', ' here.'];
+    return {
+      wireMagic: 'pb3',
+      events: [{ tStartMs: 0, dDurationMs: 120_000, wWinId: 1, segs: words.map((utf8, i) => ({ utf8, tOffsetMs: i * 200 })) }],
+    };
+  }
+  const cues =
+    videoId === 'second'
+      ? [{ start: 0, end: 120_000, text: 'Second video subtitle line.' }]
+      : videoId === 'mixed'
+        ? [{ start: 0, end: 120_000, text: 'Manual caption line for the mixed video.' }]
+        : MOCK_CUES;
   return {
     wireMagic: 'pb3',
     events: [
@@ -79,7 +92,7 @@ export async function startMockServer(): Promise<MockServer> {
     }
     if (req.method === 'GET' && url.pathname === '/api/timedtext') {
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify(timedtext(url.searchParams.get('v') ?? '')));
+      res.end(JSON.stringify(timedtext(url.searchParams.get('v') ?? '', url.searchParams.get('kind') === 'asr')));
       return;
     }
 

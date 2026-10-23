@@ -459,6 +459,46 @@ test('YouTube 字幕：单页应用切换视频后换成新视频的字幕；关
   await page.close();
 });
 
+test('YouTube 字幕：默认是自动字幕但另有人工字幕时切到人工字幕，每个视频只切一次', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/watch?v=mixed`);
+  await page.waitForTimeout(500);
+  const original = page.locator('ptx-ui-subtitles .original');
+  const badge = page.locator('ptx-ui-subtitles .badge');
+
+  await page.locator('.ytp-subtitles-button').click();
+  await expect(original).toHaveText('Manual caption line for the mixed video.');
+  await expect(page.locator('ptx-ui-subtitles .translated')).toHaveText('【译】Manual caption line for the mixed video.');
+  await expect(badge).toBeHidden();
+  expect(await page.evaluate(() => (window as unknown as { __selectedTrack?: string }).__selectedTrack)).toBe('.en');
+
+  // 用户手动切回自动字幕：不再干预
+  await page.evaluate(() => {
+    const player = document.getElementById('movie_player') as unknown as {
+      setOption(m: string, o: string, t: object): void;
+    };
+    player.setOption('captions', 'track', { languageCode: 'en', kind: 'asr', vss_id: 'a.en' });
+  });
+  await expect(original).toHaveText('auto generated words here.');
+  await expect(badge).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(original).toHaveText('auto generated words here.');
+  await page.close();
+});
+
+test('YouTube 字幕：只有自动字幕时保留它，并在字幕层标注「自动字幕」', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/watch?v=asronly`);
+  await page.waitForTimeout(500);
+  await page.locator('.ytp-subtitles-button').click();
+  await expect(page.locator('ptx-ui-subtitles .original')).toHaveText('auto generated words here.');
+  await expect(page.locator('ptx-ui-subtitles .translated')).toHaveText('【译】auto generated words here.');
+  await expect(page.locator('ptx-ui-subtitles .badge')).toHaveText('自动字幕');
+  await expect(page.locator('ptx-ui-subtitles .badge')).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { __selectedTrack?: string }).__selectedTrack)).toBeUndefined();
+  await page.close();
+});
+
 test('解除截断：省略号容器里的译文完整可见，关闭翻译后复原', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);

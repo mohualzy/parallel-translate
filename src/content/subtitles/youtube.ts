@@ -2,8 +2,16 @@ import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import { isProbablyInLanguage } from '@/lib/languages';
 import { sendToBackground } from '@/lib/messages';
 import { getSettings, onSettingsChanged, type Settings } from '@/lib/settings';
-import { activeCueIndex, nextBatch, parseJson3, parseTimedtextUrl, type Cue } from '@/lib/subtitles';
-import { CONTENT_SOURCE, HOOK_SOURCE, type ReadyMessage, type TimedtextMessage } from '@/lib/youtube';
+import {
+  activeCueIndex,
+  nextBatch,
+  parseJson3,
+  parseTimedtextUrl,
+  pickManualTrack,
+  type CaptionTrackInfo,
+  type Cue,
+} from '@/lib/subtitles';
+import { CONTENT_SOURCE, HOOK_SOURCE, type ReadyMessage, type SelectTrackMessage, type TimedtextMessage } from '@/lib/youtube';
 import { escapeText, unescapeText } from '../richtext';
 import { SubtitleOverlay } from './overlay';
 
@@ -14,6 +22,8 @@ interface Track {
   /** 语言 + 是否自动字幕：同一视频重复请求同一轨时复用已有译文 */
   key: string;
   cues: Cue[];
+  /** 自动生成（语音识别）字幕：字幕层显示「自动字幕」标记 */
+  auto: boolean;
   states: CueState[];
   translations: (string | undefined)[];
 }
@@ -36,6 +46,8 @@ export class YouTubeSubtitles {
   private overlay: SubtitleOverlay;
   private inflight = 0;
   private rendered = '';
+  /** 已经替用户切换过人工字幕的视频：每个视频只切一次，之后用户手动切回自动字幕不再干预 */
+  private switched = new Set<string>();
 
   constructor(private readonly ctx: ContentScriptContext) {
     this.overlay = new SubtitleOverlay(ctx);
@@ -44,7 +56,7 @@ export class YouTubeSubtitles {
   async start() {
     window.addEventListener('message', (e: MessageEvent<TimedtextMessage>) => {
       if (e.source !== window || e.data?.source !== HOOK_SOURCE || e.data.type !== 'timedtext') return;
-      this.load(e.data.url, e.data.body);
+      this.load(e.data.url, e.data.body, e.data.tracks);
     });
     this.settings = await getSettings();
     onSettingsChanged((next) => (this.settings = next));
@@ -53,11 +65,25 @@ export class YouTubeSubtitles {
     this.ctx.setInterval(() => this.tick(), TICK_MS);
   }
 
-  private load(url: string, body: string) {
+  private load(url: string, body: string, tracks?: CaptionTrackInfo[]) {
     if (!this.settings?.youtubeSubtitles) return;
     const info = parseTimedtextUrl(url);
     // YouTube 已经机器翻译过（用户选了「自动翻译」），交给原生字幕
     if (info.machineTranslated) return;
+    // 自动字幕常常不可靠（音乐视频尤其明显）：视频另有人工字幕就切过去，新字幕到来后会替换当前这一轨
+    if (info.asr && tracks?.length && !this.switched.has(info.videoId)) {
+      const manual = pickManualTrack(tracks, info.lang, this.settings.targetLang);
+      if (manual) {
+        this.switched.add(info.videoId);
+        const message: SelectTrackMessage = {
+          source: CONTENT_SOURCE,
+          type: 'select-track',
+          vssId: manual.vssId,
+          languageCode: manual.languageCode,
+        };
+        window.postMessage(message, location.origin);
+      }
+    }
     const key = `${info.lang}:${info.asr}`;
     if (this.track?.videoId === info.videoId && this.track.key === key) return;
     const cues = parseJson3(body, info.asr);
@@ -72,6 +98,7 @@ export class YouTubeSubtitles {
       videoId: info.videoId,
       key,
       cues,
+      auto: info.asr,
       states: cues.map(() => 'idle'),
       translations: [],
     };
@@ -121,11 +148,11 @@ export class YouTubeSubtitles {
     const controls = !player.classList.contains('ytp-autohide');
     const showOriginal = this.settings.displayMode === 'bilingual';
     const translation = index === -1 ? undefined : track.translations[index];
-    const key = `${index}|${translation ?? ''}|${controls}|${showOriginal}`;
+    const key = `${index}|${translation ?? ''}|${controls}|${showOriginal}|${track.auto}`;
     if (key === this.rendered) return;
     this.rendered = key;
     if (index === -1) this.overlay.hide();
-    else this.overlay.show(track.cues[index]!.text, translation, showOriginal, controls);
+    else this.overlay.show(track.cues[index]!.text, translation, showOriginal, controls, track.auto);
   }
 
   /** 按播放进度补翻：窗口内还有未翻译的条目且并发未满时发起下一批 */

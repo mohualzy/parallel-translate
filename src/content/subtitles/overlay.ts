@@ -15,6 +15,7 @@ export class SubtitleOverlay {
   private layer?: HTMLElement;
   private original?: HTMLElement;
   private translated?: HTMLElement;
+  private badge?: HTMLElement;
   private resize?: ResizeObserver;
 
   constructor(private readonly ctx: ContentScriptContext) {}
@@ -33,11 +34,15 @@ export class SubtitleOverlay {
     this.ui = await mountPageUi(this.ctx, 'subtitles', overlayCss, player);
     this.ui.root.innerHTML = `
       <div class="layer" hidden>
-        <div class="box"><div class="original"></div><div class="translated"></div></div>
+        <div class="box">
+          <div class="badge" title="这一轨是 YouTube 自动生成（语音识别）的字幕，可能听错，译文也会跟着错">自动字幕</div>
+          <div class="original"></div><div class="translated"></div>
+        </div>
       </div>`;
     this.layer = this.ui.root.querySelector<HTMLElement>('.layer')!;
     this.original = this.ui.root.querySelector<HTMLElement>('.original')!;
     this.translated = this.ui.root.querySelector<HTMLElement>('.translated')!;
+    this.badge = this.ui.root.querySelector<HTMLElement>('.badge')!;
     const layer = this.layer;
     this.resize = new ResizeObserver(() => {
       layer.style.setProperty('--ptx-sub-size', `${Math.max(12, Math.round(player.clientHeight * FONT_RATIO))}px`);
@@ -49,8 +54,9 @@ export class SubtitleOverlay {
     return this.ui?.host.isConnected === true;
   }
 
-  show(original: string, translated: string | undefined, showOriginal: boolean, controlsVisible: boolean) {
-    if (!this.layer || !this.original || !this.translated) return;
+  show(original: string, translated: string | undefined, showOriginal: boolean, controlsVisible: boolean, auto: boolean) {
+    if (!this.layer || !this.original || !this.translated || !this.badge) return;
+    this.badge.hidden = !auto;
     this.layer.hidden = false;
     this.layer.dataset.controls = String(controlsVisible);
     this.original.hidden = !showOriginal;
@@ -69,6 +75,6 @@ export class SubtitleOverlay {
   detach() {
     this.resize?.disconnect();
     this.ui?.remove();
-    this.ui = this.layer = this.original = this.translated = this.player = undefined;
+    this.ui = this.layer = this.original = this.translated = this.badge = this.player = undefined;
   }
 }
