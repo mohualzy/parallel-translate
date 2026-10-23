@@ -83,3 +83,11 @@
 - happy-dom 不支持属性选择器的大小写标志（`[name="description" i]`），但 Chrome 支持；需要不区分大小写时手动比较。
 - Playwright 的 `dblclick()` / `click()` 默认点在元素中心。块级段落的中心可能已在文字末尾之外，选不中词；精确选词要用 Range。
 - 流式 UI 的完成判定不能看「不再是加载中」，要有明确的完成状态（划词弹窗用 `data-state="done"`）。
+
+## YouTube
+
+- 字幕接口 `/api/timedtext` 自 2024 年起需要播放器生成的 `pot` 令牌，不能用 `captionTracks[].baseUrl` 直接请求。
+- 自动化浏览器（Playwright 自带的 Chromium，无头和有头模式都一样）打开视频会被拦截，显示「请登录，以便我们确认你不是聊天机器人」，视频不播放（2026-10-22，当前网络环境）。所以字幕功能的自动化测试用仿 YouTube 测试页（e2e 构建模式），真实站点只能手动验证。
+- 已确认的真实页面结构：`#movie_player`（`.html5-video-player`）、其中的 `<video>`、带 `aria-pressed` 的 `.ytp-subtitles-button`、`.ytp-caption-window-container`；控制栏隐藏时播放器带 `ytp-autohide` 类。播放器请求字幕的格式按 json3（`fmt=json3`）处理，尚未在真实页面上抓包确认。
+- 多个内容脚本共用同一个 `YOUTUBE_MATCHES` 数组对象，在 `build:manifestGenerated` 钩子里不能直接 `push`（会被追加多次），要赋新数组。
+- 测试页里，页面脚本给 `<video>` 定义的属性在隔离世界看不到，所以时间源用 `canvas.captureStream()` 的真实视频流。

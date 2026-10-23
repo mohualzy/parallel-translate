@@ -70,7 +70,7 @@
 
 ### P2 — 新场景
 
-- [ ] 视频双语字幕（YouTube）— 进行中：[设计](specs/2026-10-22-youtube-subtitles-design.md) · [计划](plans/2026-10-22-youtube-subtitles.md)
+- [x] 视频双语字幕（YouTube）— 已实现，E2E 通过；真实站点待手动验证：[设计](specs/2026-10-22-youtube-subtitles-design.md) · [计划](plans/2026-10-22-youtube-subtitles.md)
 - [ ] 输入框翻译：Alt+I / 连按三次空格；过滤输入法组合输入；可撤销写回
 - [ ] AI 助手 / prompt 档案：技术、论文、新闻、GitHub 等预设风格，可按站点自动选择
 - [ ] AI 抽取文章术语，保证长文前后译法一致（最多 12 条候选）
