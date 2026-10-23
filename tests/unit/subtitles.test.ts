@@ -15,9 +15,9 @@ describe('parseTimedtextUrl', () => {
       videoId: 'abc',
       lang: 'en',
       asr: true,
-      machineTranslated: false,
+      translatedTo: '',
     });
-    expect(parseTimedtextUrl('/api/timedtext?v=abc&lang=en&tlang=zh-Hans').machineTranslated).toBe(true);
+    expect(parseTimedtextUrl('/api/timedtext?v=abc&lang=en&tlang=zh-Hans').translatedTo).toBe('zh-Hans');
   });
 });
 

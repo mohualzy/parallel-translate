@@ -45,7 +45,9 @@
       const request = (track) => {
         const xhr = new XMLHttpRequest();
         const kind = track.kind === 'asr' ? '&kind=asr' : '';
-        xhr.open('GET', `/api/timedtext?v=${videoId()}&lang=${track.languageCode}&fmt=json3${kind}&pot=mock-token`);
+        // 模拟 YouTube「自动翻译」：tlang-en 翻成英文，tlang-zh 翻成简体中文
+        const tlang = { 'tlang-en': '&tlang=en', 'tlang-zh': '&tlang=zh-Hans' }[videoId()] ?? '';
+        xhr.open('GET', `/api/timedtext?v=${videoId()}&lang=${track.languageCode}&fmt=json3${kind}${tlang}&pot=mock-token`);
         xhr.send();
       };
       // 与真实播放器一致的怪癖（2026-10-22 实测）：有时 tracklist 返回空数组，但 getPlayerResponse() 里有完整的 captionTracks

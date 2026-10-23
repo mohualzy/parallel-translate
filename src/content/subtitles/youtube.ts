@@ -68,8 +68,6 @@ export class YouTubeSubtitles {
   private load(url: string, body: string, tracks?: CaptionTrackInfo[]) {
     if (!this.settings?.youtubeSubtitles) return;
     const info = parseTimedtextUrl(url);
-    // YouTube 已经机器翻译过（用户选了「自动翻译」），交给原生字幕
-    if (info.machineTranslated) return;
     // 自动字幕常常不可靠（音乐视频尤其明显）：视频另有人工字幕就切过去，新字幕到来后会替换当前这一轨
     if (info.asr && tracks?.length && !this.switched.has(info.videoId)) {
       const manual = pickManualTrack(tracks, info.lang, this.settings.targetLang);
@@ -84,7 +82,9 @@ export class YouTubeSubtitles {
         window.postMessage(message, location.origin);
       }
     }
-    const key = `${info.lang}:${info.asr}`;
+    // YouTube「自动翻译」成目标语言时，下面的「已是目标语言」检测会让位给原生字幕；
+    // 翻成其他语言（如英文）时，把这一轨当原文再翻译。切换自动翻译语言视为换了一轨
+    const key = `${info.lang}:${info.asr}:${info.translatedTo}`;
     if (this.track?.videoId === info.videoId && this.track.key === key) return;
     const cues = parseJson3(body, info.asr);
     if (cues.length === 0) return;

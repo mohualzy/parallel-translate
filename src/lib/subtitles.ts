@@ -17,8 +17,8 @@ export interface TimedtextInfo {
   lang: string;
   /** 自动生成（语音识别）字幕：逐词滚动，需要合句 */
   asr: boolean;
-  /** 带 tlang：YouTube 已经机器翻译过，不再处理 */
-  machineTranslated: boolean;
+  /** YouTube「自动翻译」的目标语言（tlang），没有则为空字符串 */
+  translatedTo: string;
 }
 
 export function parseTimedtextUrl(url: string): TimedtextInfo {
@@ -27,7 +27,7 @@ export function parseTimedtextUrl(url: string): TimedtextInfo {
     videoId: params.get('v') ?? '',
     lang: params.get('lang') ?? '',
     asr: params.get('kind') === 'asr',
-    machineTranslated: params.has('tlang'),
+    translatedTo: params.get('tlang') ?? '',
   };
 }
 

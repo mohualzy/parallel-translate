@@ -499,6 +499,24 @@ test('YouTube 字幕：只有自动字幕时保留它，并在字幕层标注「
   await page.close();
 });
 
+test('YouTube 字幕：YouTube 自动翻译成英文时当原文再翻；自动翻译成中文时交给原生字幕', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/watch?v=tlang-en`);
+  await page.waitForTimeout(500);
+  await page.locator('.ytp-subtitles-button').click();
+  await expect(page.locator('ptx-ui-subtitles .original')).toHaveText('Hello and welcome to the channel.');
+  await expect(page.locator('ptx-ui-subtitles .translated')).toHaveText('【译】Hello and welcome to the channel.');
+
+  await page.goto(`${server.url}/watch?v=tlang-zh`);
+  await page.waitForTimeout(500);
+  await page.locator('.ytp-subtitles-button').click();
+  await page.waitForTimeout(1000);
+  await expect(page.locator('ptx-ui-subtitles .layer')).toBeHidden();
+  await expect(page.locator('html')).not.toHaveAttribute('data-ptx-subtitles', '');
+  await expect(page.locator('#ytp-caption-window-container')).toBeVisible();
+  await page.close();
+});
+
 test('解除截断：省略号容器里的译文完整可见，关闭翻译后复原', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);

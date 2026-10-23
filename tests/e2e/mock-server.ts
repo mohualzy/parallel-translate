@@ -44,7 +44,7 @@ export const MOCK_CUES = [
   { start: 300_000, end: 303_000, text: 'A far away line near the end of the video.' },
 ];
 
-function timedtext(videoId: string, asr: boolean) {
+function timedtext(videoId: string, asr: boolean, tlang: string | null) {
   // 自动生成字幕：逐词带时间偏移（英文词自带前导空格）
   if (asr) {
     const words = ['auto', ' generated', ' words', ' here.'];
@@ -54,7 +54,9 @@ function timedtext(videoId: string, asr: boolean) {
     };
   }
   const cues =
-    videoId === 'second'
+    tlang?.startsWith('zh')
+      ? [{ start: 0, end: 120_000, text: '这一行已经被 YouTube 自动翻译成了中文。' }]
+      : videoId === 'second'
       ? [{ start: 0, end: 120_000, text: 'Second video subtitle line.' }]
       : videoId === 'mixed'
         ? [{ start: 0, end: 120_000, text: 'Manual caption line for the mixed video.' }]
@@ -92,7 +94,9 @@ export async function startMockServer(): Promise<MockServer> {
     }
     if (req.method === 'GET' && url.pathname === '/api/timedtext') {
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify(timedtext(url.searchParams.get('v') ?? '', url.searchParams.get('kind') === 'asr')));
+      res.end(
+        JSON.stringify(timedtext(url.searchParams.get('v') ?? '', url.searchParams.get('kind') === 'asr', url.searchParams.get('tlang'))),
+      );
       return;
     }
 
