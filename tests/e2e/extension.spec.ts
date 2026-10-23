@@ -573,6 +573,18 @@ test('仅译文模式：隐藏原文，译文保持原字号', async () => {
   await page.close();
 });
 
+test('折叠起来（高度为 0）的内容：看不见就不翻译，也不会被「解除截断」撑开', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  await toggle(page);
+  await expect(translation(page, '#p-second')).toContainText('【译】');
+  await page.waitForTimeout(500);
+  await expect(page.locator('#collapsed-p ptx-t')).toHaveCount(0);
+  await expect(page.locator('#collapsed')).not.toHaveAttribute('data-ptx-unclamp', '');
+  expect(await page.locator('#collapsed').evaluate((el) => el.getBoundingClientRect().height)).toBe(0);
+  await page.close();
+});
+
 test('悬停翻译：鼠标停在段落上单按 Ctrl 翻译/收起这一段', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);

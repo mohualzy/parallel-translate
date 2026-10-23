@@ -44,6 +44,8 @@ const SAME_LANGUAGE_MAX_CHARS = 100;
 function isClipping(el: Element): boolean {
   const cs = getComputedStyle(el);
   if (/auto|scroll/.test(`${cs.overflowX} ${cs.overflowY}`)) return false;
+  // 宽或高几乎为 0 的是有意折叠起来的内容（收起的菜单、手风琴），不是被截断，绝不展开
+  if (el.clientHeight <= 2 || el.clientWidth <= 2) return false;
   const lineClamp = cs.webkitLineClamp !== '' && cs.webkitLineClamp !== 'none';
   const hides = cs.overflowX !== 'visible' || cs.overflowY !== 'visible' || cs.textOverflow === 'ellipsis';
   const overflowing = el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1;
@@ -378,7 +380,14 @@ export class PageTranslator {
   private onIntersect(entries: IntersectionObserverEntry[]) {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
+      // 被祖先裁剪成零面积（折叠的菜单、手风琴）：浏览器对「贴边」的零面积交集也报告 isIntersecting。
+      // 这种内容用户看不见，不翻译；继续观察，等它真正展开再翻
+      const box = entry.boundingClientRect;
+      const visible = entry.intersectionRect;
+      if (box.width * box.height > 0 && visible.width * visible.height === 0) continue;
       const set = this.targets.get(entry.target);
+      if (!set) continue;
+
       if (!set) continue;
       this.targets.delete(entry.target);
       this.io?.unobserve(entry.target);
