@@ -104,3 +104,12 @@
 - IntersectionObserver：目标被祖先（`overflow: hidden; height: 0` 的折叠容器）裁剪成零面积时，若贴着边，仍会报告 `isIntersecting: true`。判断「真正可见」要看 `intersectionRect` 面积是否大于 0（目标本身面积为 0 的锚点除外）。
 - `font-size: 0` 会让容器上所有用 em / ch 表示的尺寸（宽度、max-width、内边距、间距）一起归零，所以仅译文模式不能假设隐藏原文不影响容器尺寸。
 - 后台标签页不执行 `requestAnimationFrame`，也不重绘：依赖 rAF 的排版检查要等标签页切到前台才会运行；通过 CDP 截后台标签页，拿到的是旧画面，验证要以 DOM 状态为准。
+
+## 输入框与富文本编辑器
+
+- 富文本编辑器的段落是带外边距的 `<p>`，`innerText` 在段落之间返回空行（`a\n\nb`）。拿它当原文翻译再写回，每段之间会多出一个空段落；要按块级子元素逐个取文本，用单个换行连接。
+- Lexical 靠异步的 `selectionchange` 同步内部选区：用 Range 选中后立刻 `execCommand('insertText')` 会返回 true 但什么都没写进去；等约 50ms 再写才生效。它的 insertText 会丢掉换行，合成的 `paste` 事件（`DataTransfer` 放 `text/plain`）则按行建段落，Ctrl+Z 一次撤销。
+- ProseMirror 接受 insertText（换行变成新段落），撤销由它自己的历史记录处理：`execCommand('undo')` 无效，要靠 Ctrl+Z 按键。
+- 合成的 `paste` 事件浏览器不会执行默认粘贴：普通 contenteditable 收到后什么都不发生，只能当作「编辑器自己处理粘贴」的探测手段。
+- 快捷键冲突：沉浸式翻译同样占用 Alt+A / Alt+W / Alt+I。两个扩展都装着时，后装的拿不到默认按键（实测本机所有命令都没有绑定），需要在 `chrome://extensions/shortcuts` 手动设置。
+
