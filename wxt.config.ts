@@ -5,13 +5,14 @@ import { YOUTUBE_MATCHES } from './src/lib/youtube';
 export default defineConfig({
   srcDir: 'src',
   hooks: {
-    // e2e 构建（`wxt build --mode e2e`）让 YouTube 脚本额外匹配本地 mock 服务，
-    // 用仿 YouTube 的测试页验证字幕功能；正式构建的 manifest 不受影响。
+    // e2e 构建（`wxt build --mode e2e`）让 YouTube 脚本额外匹配本地 mock 服务，用仿 YouTube 的测试页验证字幕功能；
+    // 网页内容脚本不匹配 preinstalled.html，模拟安装扩展前就打开的页面。正式构建的 manifest 不受影响。
     'build:manifestGenerated': (wxt, manifest) => {
       if (wxt.config.mode !== 'e2e') return;
       for (const script of manifest.content_scripts ?? []) {
         // 多个脚本共用同一个 YOUTUBE_MATCHES 数组对象，必须赋新数组，不能 push
         if (script.matches?.some((m) => YOUTUBE_MATCHES.includes(m))) script.matches = [...script.matches, 'http://127.0.0.1/*'];
+        if (script.matches?.includes('<all_urls>')) script.exclude_matches = ['*://*/preinstalled.html'];
       }
     },
   },
@@ -20,7 +21,7 @@ export default defineConfig({
   manifest: {
     name: '双语对照翻译',
     description: '网页双语对照翻译，使用你自己的大模型 API（OpenAI 兼容协议）',
-    permissions: ['storage', 'contextMenus'],
+    permissions: ['storage', 'contextMenus', 'scripting'],
     // 需要向任意 Base URL 发请求，内容脚本也要在所有页面运行
     host_permissions: ['<all_urls>'],
     commands: {

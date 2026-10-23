@@ -888,6 +888,58 @@ test('悬浮球：点击切换整页翻译并与快捷键同步；拖动不触�
   await page.close();
 });
 
+test('免刷新：安装前打开的页面，打开弹窗时自动注入内容脚本，可直接翻译', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/preinstalled.html`);
+  await page.waitForTimeout(500);
+  await expect(page.locator('ptx-ui-float-ball')).toHaveCount(0);
+
+  // 弹窗作为同一窗口里的后台标签页打开，它的「当前标签页」就是测试页
+  await page.bringToFront();
+  const popupPromise = context.waitForEvent('page');
+  await sw.evaluate(async (target) => {
+    const tab = (await chrome.tabs.query({})).find((t) => t.url === target)!;
+    await chrome.tabs.create({ windowId: tab.windowId, url: chrome.runtime.getURL('/popup.html'), active: false });
+  }, page.url());
+  const popup = await popupPromise;
+  await expect(popup.locator('#toggle')).toHaveText('翻译此页面');
+  await expect(page.locator('ptx-ui-float-ball')).toHaveCount(1);
+  await popup.locator('#toggle').click();
+  await expect(translation(page, '#old-p')).toHaveText('【译】This page was opened before the extension was installed.');
+  await popup.close();
+  await page.close();
+});
+
+// 扩展更新 / 重载后的真实流程（旧脚本成为孤儿、onInstalled 补注入）在 Playwright 里模拟不了：
+// runtime.reload() 会把命令行加载的扩展直接卸掉。这里用「对已有实例的页面再注入一次」覆盖新旧实例交接，
+// 真实重载在日常 Chrome 里手动验证（见 docs/TECH_NOTES.md）。
+test('免刷新：再次注入时旧实例退场，新实例接续翻译，悬浮球不重复，开关照常可用', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  await toggle(page);
+  await expect(translation(page, '#p-second')).toHaveText('【译】The quick brown fox jumps over the lazy dog.');
+  const before = server.batches.length;
+
+  await sw.evaluate(async (target) => {
+    const tab = (await chrome.tabs.query({})).find((t) => t.url === target)!;
+    const entry = chrome.runtime.getManifest().content_scripts!.find((s) => s.matches?.includes('<all_urls>'))!;
+    await chrome.scripting.executeScript({ target: { tabId: tab.id!, allFrames: true }, files: entry.js as never });
+  }, page.url());
+
+  await expect(page.locator('html')).toHaveAttribute('data-ptx-on', '');
+  await expect(translation(page, '#p-second')).toHaveCount(1);
+  await expect(translation(page, '#p-second')).toHaveText('【译】The quick brown fox jumps over the lazy dog.');
+  await expect(page.locator('ptx-ui-float-ball')).toHaveCount(1);
+  // 接续翻译全部命中缓存，不再请求模型
+  expect(server.batches.length).toBe(before);
+  // 新实例响应开关；旧实例的点击监听已解绑，悬浮球只切换一次
+  await toggle(page);
+  await expect(page.locator('ptx-t')).toHaveCount(0);
+  await page.locator('ptx-ui-float-ball .ball').click();
+  await expect(translation(page, '#p-second')).toHaveCount(1);
+  await page.close();
+});
+
 test('设置页：显示已配置服务，测试连接与获取模型列表可用', async () => {
   const page = await context.newPage();
   const errors: string[] = [];

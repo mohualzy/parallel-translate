@@ -2,12 +2,14 @@ import { browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
 import * as cache from '@/background/cache';
 import { listModels, testProvider, translateInput, translateSegments, translateSelection } from '@/background/translate';
+import { injectIntoOpenTabs, sendWithInject } from '@/lib/inject';
 import {
   SELECTION_PORT,
   type BackgroundRequest,
   type BackgroundResponses,
   type Envelope,
   type SelectionEvent,
+  sendToTab,
   type SelectionRequest,
   type TabRequest,
   type TabState,
@@ -50,14 +52,16 @@ async function handle(
 async function sendToActiveTab(request: TabRequest, tabId?: number) {
   const id = tabId ?? (await browser.tabs.query({ active: true, currentWindow: true }))[0]?.id;
   if (id === undefined) return;
-  // 只发给顶层页面，iframe 由顶层页面广播同步；chrome:// 等页面没有内容脚本，忽略即可
-  await browser.tabs.sendMessage(id, request, { frameId: 0 }).catch(() => undefined);
+  // 只发给顶层页面，iframe 由顶层页面广播同步；chrome:// 等页面注入不了，忽略即可
+  await sendToTab(id, request).catch(() => undefined);
 }
 
 export default defineBackground(() => {
   browser.runtime.onInstalled.addListener((details) => {
     browser.contextMenus.create({ id: MENU_TOGGLE, title: '翻译此页面 / 显示原文', contexts: ['page'] });
     if (details.reason === 'install') void browser.runtime.openOptionsPage();
+    // 安装前打开的页面没有内容脚本，更新后旧脚本已失效：补注入，用户不用刷新页面
+    if (details.reason === 'install' || details.reason === 'update') void injectIntoOpenTabs();
   });
 
   browser.runtime.onStartup.addListener(() => void cache.prune().catch(() => undefined));
@@ -69,7 +73,10 @@ export default defineBackground(() => {
   browser.commands.onCommand.addListener((command, tab) => {
     if (command === 'translate-input') {
       // 焦点可能在 iframe 的输入框里：发给所有 frame，由拿着焦点的那个处理
-      if (tab?.id !== undefined) void browser.tabs.sendMessage(tab.id, { type: 'translate-input' } satisfies TabRequest).catch(() => undefined);
+      const id = tab?.id;
+      if (id !== undefined) {
+        void sendWithInject(id, () => browser.tabs.sendMessage(id, { type: 'translate-input' } satisfies TabRequest)).catch(() => undefined);
+      }
       return;
     }
     const requests: Record<string, TabRequest> = {

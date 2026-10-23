@@ -16,7 +16,7 @@ function renderState(state: TabState | undefined) {
   if (!state) {
     toggleBtn.disabled = true;
     toggleBtn.textContent = '此页面无法翻译';
-    statusEl.textContent = '浏览器内置页面、扩展商店等不允许运行扩展；刚安装扩展时请先刷新页面。';
+    statusEl.textContent = '浏览器内置页面、扩展商店等不允许运行扩展。';
     return;
   }
   toggleBtn.disabled = false;

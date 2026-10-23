@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import { sendWithInject } from './inject';
 import type { ProviderConfig } from './settings';
 
 // ---------- 页面 / 设置页 → background ----------
@@ -92,7 +93,10 @@ export interface TabState {
   pageLang: string;
 }
 
-/** 发给标签页的顶层页面（frameId 0）；iframe 的状态由顶层页面广播同步，不直接控制 */
+/**
+ * 发给标签页的顶层页面（frameId 0）；iframe 的状态由顶层页面广播同步，不直接控制。
+ * 页面里没有可用的内容脚本（安装前打开、扩展更新后）时自动注入再发。
+ */
 export async function sendToTab(tabId: number, request: TabRequest): Promise<TabState> {
-  return (await browser.tabs.sendMessage(tabId, request, { frameId: 0 })) as TabState;
+  return sendWithInject(tabId, async () => (await browser.tabs.sendMessage(tabId, request, { frameId: 0 })) as TabState);
 }
