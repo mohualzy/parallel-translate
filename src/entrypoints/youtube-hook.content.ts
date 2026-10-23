@@ -10,18 +10,31 @@ import {
   type TimedtextMessage,
 } from '@/lib/youtube';
 
-/** YouTube 播放器元素上的（非公开）接口，只用到字幕相关的两个方法 */
+/** YouTube 播放器元素上的（非公开）接口，只用到字幕相关的几个方法 */
 interface YouTubePlayer extends HTMLElement {
   getOption?(module: 'captions', option: 'tracklist'): Record<string, unknown>[] | undefined;
   setOption?(module: 'captions', option: 'track', value: Record<string, unknown>): void;
+  getPlayerResponse?(): {
+    captions?: { playerCaptionsTracklistRenderer?: { captionTracks?: Record<string, unknown>[] } };
+  };
 }
 
 const player = () => document.getElementById('movie_player') as YouTubePlayer | null;
 
+/**
+ * 字幕轨列表。实测（2026-10-22）getOption('captions', 'tracklist') 在只有自动字幕的视频上返回空数组，
+ * 所以为空时退回播放器数据里的 captionTracks（字段名是 vssId 而不是 vss_id）。
+ */
 function rawTracks(): Record<string, unknown>[] {
   try {
     const list = player()?.getOption?.('captions', 'tracklist');
-    return Array.isArray(list) ? list : [];
+    if (Array.isArray(list) && list.length > 0) return list;
+  } catch {
+    // 退回下面的 captionTracks
+  }
+  try {
+    const tracks = player()?.getPlayerResponse?.()?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    return Array.isArray(tracks) ? tracks : [];
   } catch {
     return [];
   }
@@ -69,7 +82,15 @@ export default defineContentScript({
         for (const message of recent) window.postMessage(message, location.origin);
       } else if (data.type === 'select-track') {
         try {
-          const track = rawTracks().find((t) => vssIdOf(t) === data.vssId) ?? { languageCode: data.languageCode };
+          // 优先用 tracklist 里的对象；没有时只传 languageCode。实测同语言同时有人工和自动字幕时，
+          // 只传 languageCode 播放器会选中人工字幕，正是我们要的
+          let list: Record<string, unknown>[] = [];
+          try {
+            list = player()?.getOption?.('captions', 'tracklist') ?? [];
+          } catch {
+            // 用 languageCode 兜底
+          }
+          const track = list.find((t) => vssIdOf(t) === data.vssId) ?? { languageCode: data.languageCode };
           player()?.setOption?.('captions', 'track', track);
         } catch {
           // 切换失败就保持自动字幕

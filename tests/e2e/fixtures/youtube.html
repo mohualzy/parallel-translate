@@ -48,9 +48,22 @@
         xhr.open('GET', `/api/timedtext?v=${videoId()}&lang=${track.languageCode}&fmt=json3${kind}&pot=mock-token`);
         xhr.send();
       };
-      player.getOption = (module, option) => (module === 'captions' && option === 'tracklist' ? tracks() : undefined);
-      player.setOption = (module, option, track) => {
+      // 与真实播放器一致的怪癖（2026-10-22 实测）：有时 tracklist 返回空数组，但 getPlayerResponse() 里有完整的 captionTracks
+      player.getOption = (module, option) =>
+        module === 'captions' && option === 'tracklist' ? (videoId() === 'mixed' ? [] : tracks()) : undefined;
+      player.getPlayerResponse = () => ({
+        captions: {
+          playerCaptionsTracklistRenderer: {
+            captionTracks: tracks().map((t) => ({ languageCode: t.languageCode, kind: t.kind || undefined, vssId: t.vss_id })),
+          },
+        },
+      });
+      // 与真实播放器一致：只传 languageCode 时优先选中该语言的人工字幕
+      player.setOption = (module, option, wanted) => {
         if (module !== 'captions' || option !== 'track') return;
+        const same = tracks().filter((t) => t.languageCode === wanted.languageCode);
+        const track = same.find((t) => t.vss_id === wanted.vss_id) ?? same.find((t) => t.kind !== 'asr') ?? same[0];
+        if (!track) return;
         window.__selectedTrack = track.vss_id;
         request(track);
       };
