@@ -23,6 +23,10 @@ interface Paragraph extends Run {
   el?: HTMLElement;
   /** 仅译文模式下给译文设回的原文字号/行高（容器被设为 font-size:0） */
   font?: [size: string, lineHeight: string];
+  /** 隐藏原文前容器的宽度，用于检测隐藏后译文是否被挤成窄列 */
+  widthBeforeHide?: number;
+  /** 这一段隐藏原文会挤坏排版，仅译文模式下也保持双语显示 */
+  noHide?: boolean;
   /** 用户悬停关闭了这一段，之后不再自动补回 */
   dismissed: boolean;
   /** 被页面脚本删除后补回的次数，防止与页面无限拉锯 */
@@ -85,8 +89,8 @@ export class PageTranslator {
   private ownRemovals = new WeakSet<Node>();
   /** 已挂上 MutationObserver 的 shadow root（MutationObserver 看不到 shadow 树内部的变化） */
   private watchedRoots = new WeakSet<ShadowRoot>();
-  /** 待检查是否被截断的段落（下一帧批量读布局，避免逐段强制重排） */
-  private unclampQueue = new Set<Paragraph>();
+  /** 刚渲染、待做排版检查的段落（下一帧批量读布局，避免逐段强制重排） */
+  private layoutQueue = new Set<Paragraph>();
   /** 被解除截断的元素，关闭翻译时复原 */
   private unclamped = new Set<Element>();
   /** 每个容器最近一次登记的整段段落，用于发现「同一位置的内容被改写」 */
@@ -347,7 +351,7 @@ export class PageTranslator {
     this.dirtyRoots.clear();
     this.lastByContainer = new WeakMap();
     this.watchedRoots = new WeakSet();
-    this.unclampQueue.clear();
+    this.layoutQueue.clear();
     for (const el of this.unclamped) el.removeAttribute('data-ptx-unclamp');
     this.unclamped.clear();
   }
@@ -386,8 +390,6 @@ export class PageTranslator {
       const visible = entry.intersectionRect;
       if (box.width * box.height > 0 && visible.width * visible.height === 0) continue;
       const set = this.targets.get(entry.target);
-      if (!set) continue;
-
       if (!set) continue;
       this.targets.delete(entry.target);
       this.io?.unobserve(entry.target);
@@ -539,7 +541,7 @@ export class PageTranslator {
     inner.append(deserialize(p.translation, p.refs, document));
     el.replaceChildren(inner);
     this.applyHide(p, this.settings.displayMode === 'translation');
-    this.scheduleUnclamp(p);
+    this.scheduleLayoutCheck(p);
   }
 
   private renderError(p: Paragraph) {
@@ -554,10 +556,11 @@ export class PageTranslator {
   /** 仅译文模式：容器 font-size:0 隐藏原文文本节点，CSS 隐藏原文子元素，译文显式设回字号 */
   private applyHide(p: Paragraph, hide: boolean) {
     const container = p.container;
-    if (hide && p.whole && p.el) {
+    if (hide && p.whole && p.el && !p.noHide) {
       if (!container.hasAttribute('data-ptx-hide')) {
         const cs = getComputedStyle(container);
         p.font = [cs.fontSize, cs.lineHeight];
+        p.widthBeforeHide = container.getBoundingClientRect().width;
         container.setAttribute('data-ptx-hide', '');
       }
       if (p.font) {
@@ -571,23 +574,38 @@ export class PageTranslator {
     p.el?.style.removeProperty('line-height');
   }
 
-  // ---------- 解除截断 ----------
+  // ---------- 渲染后的排版检查：仅译文挤压检测、解除截断 ----------
 
-  private scheduleUnclamp(p: Paragraph) {
-    if (!this.settings.unclamp) return;
-    this.unclampQueue.add(p);
-    if (this.unclampQueue.size === 1) requestAnimationFrame(() => this.flushUnclamp());
+  private scheduleLayoutCheck(p: Paragraph) {
+    this.layoutQueue.add(p);
+    if (this.layoutQueue.size === 1) requestAnimationFrame(() => this.flushLayoutChecks());
+  }
+
+  /**
+   * 仅译文模式靠容器 font-size:0 隐藏原文。页面若用 em / ch 等相对字号的单位给容器定宽（如 max-width: 40ch），
+   * 字号归零后宽度也归零，译文会被挤成一字一行。检测到「容器明显变窄 + 译文变得很高」时，这一段退回双语显示。
+   */
+  private isSqueezed(p: Paragraph): boolean {
+    if (!p.el || !p.font || !p.widthBeforeHide || p.widthBeforeHide < 40) return false;
+    const width = p.container.getBoundingClientRect().width;
+    const lineHeight = Number.parseFloat(p.font[1]) || Number.parseFloat(p.font[0]) * 1.4;
+    return width < p.widthBeforeHide * 0.5 && p.el.getBoundingClientRect().height > lineHeight * 3;
   }
 
   /**
    * 译文插入后，如果所在容器（及最多 5 层祖先）因省略号 / 行数限制 / 固定高度把内容裁掉了，
    * 打上 data-ptx-unclamp，由 CSS 解除截断。可滚动容器是有意为之，不处理。
    */
-  private flushUnclamp() {
-    const items = [...this.unclampQueue];
-    this.unclampQueue.clear();
+  private flushLayoutChecks() {
+    const items = [...this.layoutQueue];
+    this.layoutQueue.clear();
     for (const p of items) {
       if (!p.el?.isConnected) continue;
+      if (p.container.hasAttribute('data-ptx-hide') && this.isSqueezed(p)) {
+        p.noHide = true;
+        this.applyHide(p, false);
+      }
+      if (!this.settings.unclamp) continue;
       let el: Element | null = p.container;
       for (let depth = 0; el && el !== document.body && depth < 5; depth++, el = el.parentElement) {
         if (this.unclamped.has(el) || !isClipping(el)) continue;
