@@ -1126,6 +1126,29 @@ test('侧栏：粘贴即自动翻译，不用点按钮；已有译文时切换�
   await panel.close();
 });
 
+test('侧栏：手动输入停顿后自动翻译，连续打字只发一次请求；内容没变不重复请求；清空输入即清空译文', async () => {
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  const source = panel.locator('#source');
+  const result = panel.locator('#result');
+  const before = server.texts.length;
+  await source.focus();
+  await panel.keyboard.type('Typed by hand', { delay: 40 });
+  await expect(result).toHaveText('【译】Typed by hand');
+  expect(server.texts.length).toBe(before + 1);
+
+  // 打一个字再删掉：内容没变，停顿后不重复请求
+  await panel.keyboard.type('x');
+  await panel.keyboard.press('Backspace');
+  await panel.waitForTimeout(1200);
+  expect(server.texts.length).toBe(before + 1);
+
+  await panel.keyboard.press('Control+a');
+  await panel.keyboard.press('Backspace');
+  await expect(panel.locator('#result-box')).toBeHidden();
+  await panel.close();
+});
+
 test('侧栏：右键菜单经 storage.session 交来的文字自动填入并翻译（侧栏已打开时也生效）', async () => {
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);

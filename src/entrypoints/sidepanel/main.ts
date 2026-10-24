@@ -25,8 +25,14 @@ const errorEl = $('#error');
 
 type Port = ReturnType<typeof browser.runtime.connect>;
 
+/** 手动输入停顿这么久后自动翻译：连续打字不触发，每次按键重新计时 */
+const TYPING_PAUSE_MS = 800;
+
 let settings: Settings;
 let port: Port | undefined;
+let typingTimer: ReturnType<typeof setTimeout> | undefined;
+/** 上一次发出的请求内容：内容和设置都没变（如打了个字又删掉）就不重复请求 */
+let lastRequest = '';
 
 function currentTarget(): string {
   return resolveTextTarget(source.value, targetSelect.value, settings.targetLang, settings.inputTargetLang);
@@ -44,12 +50,37 @@ function showError(message: string) {
   result.dataset.state = 'error';
 }
 
-function translate() {
+/** 中止进行中的请求并清空译文（输入被清空时） */
+function clearResult() {
+  clearTimeout(typingTimer);
+  port?.disconnect();
+  port = undefined;
+  lastRequest = '';
+  resultBox.hidden = true;
+  errorEl.hidden = true;
+}
+
+/** 输入停顿后自动翻译；输入法正在组字时不算（拼音还没上屏） */
+function scheduleTranslate() {
+  clearTimeout(typingTimer);
+  if (!source.value.trim()) {
+    clearResult();
+    return;
+  }
+  typingTimer = setTimeout(() => translate(false), TYPING_PAUSE_MS);
+}
+
+/** force：用户主动要求（按钮、Ctrl+Enter）时即使内容没变也重新请求 */
+function translate(force = true) {
+  clearTimeout(typingTimer);
   const text = source.value.trim();
   if (!text) return;
+  const targetLang = currentTarget();
+  const key = JSON.stringify([text, targetLang, profileSelect.value, providerSelect.value]);
+  if (!force && key === lastRequest) return;
+  lastRequest = key;
   // 再次翻译时中止上一个请求（断开长连接，后台随之中止）
   port?.disconnect();
-  const targetLang = currentTarget();
   errorEl.hidden = true;
   resultBox.hidden = false;
   result.textContent = '';
@@ -104,13 +135,10 @@ async function init() {
   fillSelect(targetSelect, [['auto', '自动'], ...LANGUAGES.map((l): [string, string] => [l.code, l.name])], 'auto');
   renderAutoLabel();
 
-  $('#translate').addEventListener('click', translate);
+  $('#translate').addEventListener('click', () => translate());
   $('#clear').addEventListener('click', () => {
-    port?.disconnect();
-    port = undefined;
+    clearResult();
     source.value = '';
-    resultBox.hidden = true;
-    errorEl.hidden = true;
     renderAutoLabel();
     source.focus();
   });
@@ -124,14 +152,14 @@ async function init() {
     }
     setTimeout(() => (button.textContent = '复制'), 1500);
   });
-  source.addEventListener('input', renderAutoLabel);
-  // 粘贴即翻译：paste 事件触发时输入框的值还没更新，等这一轮事件处理完再读
-  source.addEventListener('paste', () => {
-    setTimeout(() => {
-      renderAutoLabel();
-      translate();
-    }, 0);
+  source.addEventListener('input', (e) => {
+    renderAutoLabel();
+    const event = e as InputEvent;
+    // 粘贴是一次性的完整输入，立即翻译；手动输入停顿后再翻；输入法组字中不算，等上屏（compositionend）
+    if (event.inputType === 'insertFromPaste') translate(false);
+    else if (!event.isComposing) scheduleTranslate();
   });
+  source.addEventListener('compositionend', scheduleTranslate);
   // 已经翻译过时，改服务、风格、目标语言直接按新设置重翻
   for (const select of [providerSelect, profileSelect, targetSelect]) {
     select.addEventListener('change', () => {
