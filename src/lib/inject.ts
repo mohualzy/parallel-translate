@@ -53,12 +53,15 @@ export async function sendWithInject<T>(tabId: number, send: () => Promise<T>): 
 
 /**
  * 安装 / 更新后给所有已加载完的网页注入。跳过：被丢弃的标签页（恢复时会重新加载）、
- * 还在加载的（manifest 会注入）、浏览器内置页面（不允许注入）。逐个注入，避免同时唤起大量页面。
+ * 还在加载的（manifest 会注入）、浏览器内置页面（不允许注入）。
+ * 必须并行：Chrome 会冻结后台标签页（省内存），往冻结的标签页注入要等它被唤醒，
+ * 逐个注入时一个冻结的标签页会让排在后面的全部干等（实测一分钟以上）。
  */
 export async function injectIntoOpenTabs(): Promise<void> {
   const tabs = await browser.tabs.query({ status: 'complete', discarded: false });
-  for (const tab of tabs) {
-    if (tab.id === undefined || !/^(https?|file):/.test(tab.url ?? '')) continue;
-    await injectContentScript(tab.id).catch(() => undefined);
-  }
+  await Promise.allSettled(
+    tabs
+      .filter((tab) => tab.id !== undefined && /^(https?|file):/.test(tab.url ?? ''))
+      .map((tab) => injectContentScript(tab.id!)),
+  );
 }
