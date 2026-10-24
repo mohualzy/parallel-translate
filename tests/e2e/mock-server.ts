@@ -97,9 +97,10 @@ export async function startMockServer(): Promise<MockServer> {
     }
 
     // PDF 阅读器：运行时生成的测试 PDF；fake.pdf 是地址像 PDF 的普通网页（测弹窗按钮，无头浏览器没有自带 PDF 阅读器）
-    if (req.method === 'GET' && (url.pathname === '/sample.pdf' || url.pathname === '/two-column.pdf')) {
+    // /papers/sample：不带 .pdf 后缀的 PDF（像 arXiv 的 /pdf/…），测按响应头自动打开
+    if (req.method === 'GET' && (url.pathname === '/sample.pdf' || url.pathname === '/papers/sample' || url.pathname === '/two-column.pdf')) {
       res.writeHead(200, { 'content-type': 'application/pdf' });
-      res.end(url.pathname === '/sample.pdf' ? samplePdf() : twoColumnPdf());
+      res.end(url.pathname === '/two-column.pdf' ? twoColumnPdf() : samplePdf());
       return;
     }
     if (req.method === 'GET' && url.pathname === '/fake.pdf') {

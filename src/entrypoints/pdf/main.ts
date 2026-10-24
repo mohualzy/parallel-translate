@@ -1,5 +1,7 @@
 import '@/ui/base.css';
 import './style.css';
+import { sendToBackground } from '@/lib/messages';
+import { fileFromReaderUrl } from '@/lib/pdf/auto-open';
 import { CJK_PRESETS, cjkFontLabel, isPreset } from '@/lib/pdf/fonts';
 import { getProfile, PROFILES } from '@/lib/profiles';
 import { getSettings, onSettingsChanged, saveSettings } from '@/lib/settings';
@@ -246,11 +248,16 @@ function init() {
     timer = setTimeout(() => viewer?.layoutPages(), 300);
   });
 
-  const file = new URLSearchParams(location.search).get('file');
+  // ?file=（弹窗、右键菜单）或 #原地址（自动打开 PDF 的重定向，D61）
+  const file = fileFromReaderUrl(location.href);
   if (!file) {
     $('#empty').hidden = false;
     return;
   }
+  // 「原文件」：用浏览器自带的查看器看原 PDF（后台先放行这个地址，免得又被转回阅读器）
+  const original = $<HTMLButtonElement>('#original');
+  original.hidden = !/^https?:/.test(file);
+  original.addEventListener('click', () => void sendToBackground({ type: 'open-original-pdf', url: file }).catch((err: unknown) => showNotice(String(err))));
   progress.textContent = '正在打开…';
   fetchPdf(file)
     .then((data) => load(data, fileNameOf(file), file))
@@ -261,4 +268,6 @@ function init() {
     });
 }
 
-init();
+// 阅读器可被网页访问（自动打开 PDF 的重定向需要），被嵌进别人的页面时不加载，免得替别人消耗 API 额度
+if (window.top === window) init();
+else document.body.textContent = '双语阅读器不能嵌入其他页面使用';

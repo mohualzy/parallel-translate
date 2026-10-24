@@ -50,6 +50,8 @@ export interface Settings {
   glossary: string;
   /** PDF 译文的中文字体：空为自动，@song 等为预设，其他是字体族名（lib/pdf/fonts.ts） */
   pdfCjkFont: string;
+  /** 在网页上打开 PDF 时直接进双语阅读器（按响应头识别，lib/pdf/auto-open.ts） */
+  pdfAutoOpen: boolean;
   batchMaxChars: number;
   batchMaxSegments: number;
 }
@@ -98,6 +100,7 @@ export const DEFAULT_SETTINGS: Settings = {
   extractTerms: true,
   glossary: '',
   pdfCjkFont: '',
+  pdfAutoOpen: false,
   batchMaxChars: 2000,
   batchMaxSegments: 12,
 };

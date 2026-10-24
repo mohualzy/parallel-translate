@@ -40,7 +40,11 @@ export default defineConfig({
   manifest: {
     name: '双语对照翻译',
     description: '网页双语对照翻译，使用你自己的大模型 API（OpenAI 兼容协议）',
-    permissions: ['storage', 'contextMenus', 'scripting'],
+    // declarativeNetRequest：按响应头把 PDF 转进双语阅读器（D61，设置里打开才生效）
+    permissions: ['storage', 'contextMenus', 'scripting', 'declarativeNetRequest'],
+    // 自动打开 PDF 要从网页重定向到阅读器，阅读器必须可被网页访问；动态地址让网页猜不到、
+    // 不能用 iframe 嵌入或自己跳过来（否则任意网站都能让阅读器翻译 PDF，消耗用户的 API 额度）
+    web_accessible_resources: [{ resources: ['pdf.html'], matches: ['<all_urls>'], use_dynamic_url: true }],
     // PDF 阅读器：pdf.js 用 wasm 解码 JPEG 2000 / JBIG2 图片，扩展页面默认 CSP 不允许实例化 wasm
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",

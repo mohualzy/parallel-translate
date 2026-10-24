@@ -33,7 +33,9 @@ export type BackgroundRequest =
   /** 顶层页面翻译开关变化后，请后台转告同一标签页的所有 iframe */
   | { type: 'broadcast-enabled'; enabled: boolean }
   /** iframe 加载时询问顶层页面是否在翻译 */
-  | { type: 'top-frame-state' };
+  | { type: 'top-frame-state' }
+  /** PDF 阅读器「原文件」：本标签页放行这个地址（不再自动转进阅读器），用浏览器自带的查看器打开 */
+  | { type: 'open-original-pdf'; url: string };
 
 export interface TranslateResult {
   /** 与 segments 等长；null 表示该段失败 */
@@ -52,6 +54,7 @@ export interface BackgroundResponses {
   'cache-count': number;
   'broadcast-enabled': null;
   'top-frame-state': TabState | null;
+  'open-original-pdf': null;
 }
 
 export type Envelope<T> = { ok: true; data: T } | { ok: false; error: string };

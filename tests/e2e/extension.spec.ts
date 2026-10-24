@@ -1418,6 +1418,39 @@ test('PDF 阅读器：两栏页面上拖选左栏两段，不会把夹在中间�
   await page.close();
 });
 
+test('PDF 自动打开：开关打开后，不带 .pdf 后缀的 PDF 地址直接进阅读器；「原文件」放行不再转回；关掉后规则删除', async () => {
+  const setAutoOpen = (on: boolean) =>
+    sw.evaluate(async (on) => {
+      const s = ((await chrome.storage.local.get('settings')).settings ?? {}) as Record<string, unknown>;
+      await chrome.storage.local.set({ settings: { ...s, pdfAutoOpen: on } });
+    }, on);
+  const dynamicRules = () => sw.evaluate(async () => (await chrome.declarativeNetRequest.getDynamicRules()).map((r) => r.id));
+  await setAutoOpen(true);
+  await expect.poll(dynamicRules).toEqual([1]);
+
+  const page = await context.newPage();
+  const pdf = `${server.url}/papers/sample?x=1&y=2`;
+  await page.goto(pdf);
+  // 原地址原样放在 hash 里（含查询串），阅读器照常打开、翻译
+  await expect(page).toHaveURL(`chrome-extension://${extensionId}/pdf.html#${pdf}`);
+  await expect(page.locator('#progress')).toContainText('已翻译 2 / 2 页');
+
+  // 「原文件」：本标签页放行这个地址，交给浏览器自带的查看器，不会再被转回阅读器
+  await page.locator('#original').click();
+  await expect(page).toHaveURL(pdf);
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(pdf);
+  // 放行只限那个标签页：别的标签页打开同一地址仍进阅读器
+  const other = await context.newPage();
+  await other.goto(pdf);
+  await expect(other).toHaveURL(`chrome-extension://${extensionId}/pdf.html#${pdf}`);
+  await other.close();
+  await page.close();
+
+  await setAutoOpen(false);
+  await expect.poll(dynamicRules).toEqual([]);
+});
+
 test('PDF 阅读器：弹窗在 PDF 页面上显示「用双语阅读器打开此 PDF」，点击后本标签页换成阅读器', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/fake.pdf`);

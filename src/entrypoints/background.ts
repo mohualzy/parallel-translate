@@ -1,4 +1,4 @@
-import { browser } from 'wxt/browser';
+import { browser, type Browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
 import * as cache from '@/background/cache';
 import {
@@ -10,7 +10,9 @@ import {
   translateSelection,
   translateText,
 } from '@/background/translate';
+import { AUTO_OPEN_RULE_ID, autoOpenRule, BYPASS_RULE_BASE, bypassRule } from '@/lib/pdf/auto-open';
 import { PDF_LINK_PATTERNS, viewerUrl } from '@/lib/pdf/url';
+import { getSettings, onSettingsChanged } from '@/lib/settings';
 import { openSidePanel, PENDING_TEXT_KEY } from '@/lib/side-panel';
 import { TEXT_PORT, type TextRequest } from '@/lib/text-translate';
 import { injectIntoOpenTabs, sendWithInject } from '@/lib/inject';
@@ -56,12 +58,34 @@ async function handle(
       return testProvider(request.provider);
     case 'list-models':
       return listModels(request.provider);
+    case 'open-original-pdf':
+      if (tabId !== undefined) await openOriginalPdf(tabId, request.url);
+      return null;
     case 'clear-cache':
       await cache.clear();
       return null;
     case 'cache-count':
       return cache.count();
   }
+}
+
+/** 按设置增删「自动用双语阅读器打开 PDF」的动态规则（D61）；动态规则会持久保存，启动时再对齐一次 */
+let autoOpenEnabled: boolean | undefined;
+async function syncAutoOpen(enabled: boolean) {
+  if (enabled === autoOpenEnabled) return;
+  autoOpenEnabled = enabled;
+  await browser.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: [AUTO_OPEN_RULE_ID],
+    addRules: enabled ? [autoOpenRule(browser.runtime.getURL('/pdf.html')) as Browser.declarativeNetRequest.Rule] : [],
+  });
+}
+
+/** 「原文件」：给这个标签页的这个地址加一条会话级放行规则，再跳过去，由浏览器自带的查看器打开 */
+async function openOriginalPdf(tabId: number, url: string) {
+  const rules = await browser.declarativeNetRequest.getSessionRules();
+  const id = Math.max(BYPASS_RULE_BASE, ...rules.map((r) => r.id)) + 1;
+  await browser.declarativeNetRequest.updateSessionRules({ addRules: [bypassRule(id, url, tabId) as Browser.declarativeNetRequest.Rule] });
+  await browser.tabs.update(tabId, { url });
 }
 
 async function sendToActiveTab(request: TabRequest, tabId?: number) {
@@ -82,6 +106,10 @@ export default defineBackground(() => {
   });
 
   browser.runtime.onStartup.addListener(() => void cache.prune().catch(() => undefined));
+
+  // 自动用双语阅读器打开 PDF：后台每次启动对齐一次，设置变化时跟着增删规则
+  void getSettings().then((s) => syncAutoOpen(s.pdfAutoOpen));
+  onSettingsChanged((s) => void syncAutoOpen(s.pdfAutoOpen).catch(() => undefined));
 
   browser.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId === MENU_TOGGLE) void sendToActiveTab({ type: 'toggle' }, tab?.id);
