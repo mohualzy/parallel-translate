@@ -36,10 +36,10 @@ export const PROFILES: Profile[] = [
   {
     id: 'paper',
     name: '学术论文',
-    zh: '这是学术论文。使用严谨、正式的学术语体；关键术语使用学界通行译法，首次出现时在译文后用括号注明原文；公式、变量、引用标记和缩写原样保留；不要简化或省略论证细节。',
+    zh: '这是学术论文。使用严谨、正式的学术语体；关键术语使用学界通行译法，首次出现时在译文后用括号注明原文；公式、变量、引用标记、缩写和人名（作者、被引学者）原样保留，人名不要音译；不要简化或省略论证细节。',
     en:
       'This is an academic paper. Use a rigorous, formal academic register; use the accepted terminology of the field and put the original term in parentheses on its first occurrence; ' +
-      'keep formulas, variables, citation markers and abbreviations unchanged; do not simplify or drop details of the argument.',
+      'keep formulas, variables, citation markers, abbreviations and personal names (authors, cited researchers) unchanged, never transliterate names; do not simplify or drop details of the argument.',
   },
   {
     id: 'news',

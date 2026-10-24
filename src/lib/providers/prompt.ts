@@ -3,8 +3,8 @@ import { baseLang, getLanguage } from '../languages';
 import { getProfile } from '../profiles';
 import type { ChatMessage } from './types';
 
-/** prompt 协议有不兼容修改时 +1，使旧缓存失效 */
-export const PROMPT_VERSION = 2;
+/** prompt 协议或风格档案的文字有修改时 +1，使旧缓存失效（缓存键只含档案 id） */
+export const PROMPT_VERSION = 3;
 
 /** 默认风格即「通用」档案 */
 export const DEFAULT_STYLE_PROMPT = getProfile('general').en;
