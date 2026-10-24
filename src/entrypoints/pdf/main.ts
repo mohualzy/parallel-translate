@@ -83,11 +83,13 @@ async function load(data: ArrayBuffer, fallbackTitle: string, from = fallbackTit
     highlightPanel.refresh();
   };
   viewer.onHighlightsChange = () => highlightPanel.refresh();
+  viewer.topInset = () => document.querySelector('.toolbar')?.getBoundingClientRect().bottom ?? 0;
   await viewer.init();
   highlightPanel.refresh();
   // 打开文件期间可能换过字体，以下拉框为准
   viewer.setCjkFont(cjkFont);
   renderControls();
+  await viewer.restorePosition();
 }
 
 function renderControls() {
@@ -267,6 +269,9 @@ function init() {
       $('#empty').hidden = false;
     });
 }
+
+// 阅读位置由阅读器自己记（D62），不让浏览器在刷新时按旧的滚动距离恢复（页面是陆续撑开的，会对不上）
+history.scrollRestoration = 'manual';
 
 // 阅读器可被网页访问（自动打开 PDF 的重定向需要），被嵌进别人的页面时不加载，免得替别人消耗 API 额度
 if (window.top === window) init();

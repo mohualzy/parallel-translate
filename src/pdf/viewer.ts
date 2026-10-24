@@ -1,6 +1,7 @@
 import type { GlossaryEntry } from '@/lib/glossary';
 import { addHighlight, locate, removeRange, type HighlightEntry, type HighlightStyle, type PdfHighlight, type TextRange } from '@/lib/pdf/highlights';
 import { originalPageText, rangeRects, type PageTextBlock } from '@/lib/pdf/page-text';
+import { worthRemembering } from '@/lib/pdf/positions';
 import { isProbablyInLanguage } from '@/lib/languages';
 import { sendToBackground, type PageContext } from '@/lib/messages';
 import { splitByColor } from '@/lib/pdf/color';
@@ -8,6 +9,7 @@ import { analyzePage, type PdfBlock } from '@/lib/pdf/layout';
 import { getSettings, type Settings } from '@/lib/settings';
 import { drawHighlights, drawTranslatedPage, recordCoverage, type FontCoverage, type HighlightMarks } from './draw';
 import { loadHighlights, saveHighlights } from './highlight-store';
+import { loadPosition, savePosition } from './position-store';
 import type { PdfDocument } from './loader';
 import { extractText, renderPage, type Glyph } from './page-render';
 import { renderTextLayer } from './text-layer';
@@ -87,6 +89,8 @@ export class PdfViewer {
   onHighlightsChange?: () => void;
   private docId = '';
   zoom = 1;
+  /** 视口顶部被工具栏挡住的高度（阅读位置按工具栏下沿算），由页面设置 */
+  topInset = () => 0;
   mode: ViewMode = 'bilingual';
   profile = 'general';
   autoProfile = 'general';
@@ -127,6 +131,53 @@ export class PdfViewer {
     this.profile = this.autoProfile;
     this.termsReady = this.extractTerms(firstText);
     this.layoutPages();
+  }
+
+  /**
+   * 回到上次读到的位置（D62），之后滚动停下就记下来。
+   * 要在工具栏渲染完之后调用：工具栏在文档流里，它变高会把页面往下推，先跳就对不准。
+   */
+  async restorePosition() {
+    const last = await loadPosition(this.docId).catch(() => undefined);
+    if (last && last.page <= this.pages.length) this.scrollToPosition(last);
+    this.trackPosition();
+  }
+
+  /** 视口顶部（工具栏下沿）落在哪一页的哪里 */
+  currentPosition(): { page: number; offset: number } {
+    const top = this.topInset();
+    for (const p of this.pages) {
+      const r = p.el.getBoundingClientRect();
+      if (r.bottom > top) return { page: p.index, offset: Math.min(1, Math.max(0, (top - r.top) / r.height)) };
+    }
+    return { page: this.pages.length, offset: 1 };
+  }
+
+  scrollToPosition(pos: { page: number; offset: number }) {
+    const el = this.pages[pos.page - 1]?.el;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    window.scrollTo({ top: window.scrollY + r.top + pos.offset * r.height - this.topInset() });
+  }
+
+  private trackPosition() {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const save = () => {
+      const pos = this.currentPosition();
+      if (worthRemembering(pos)) void savePosition(this.docId, { ...pos, at: Date.now() }).catch(() => undefined);
+    };
+    window.addEventListener(
+      'scroll',
+      () => {
+        clearTimeout(timer);
+        timer = setTimeout(save, 1000);
+      },
+      { passive: true },
+    );
+    window.addEventListener('pagehide', () => {
+      clearTimeout(timer);
+      save();
+    });
   }
 
   /** 前几页的纯文本：判断风格、抽取文章术语（不需要渲染） */
@@ -418,8 +469,11 @@ export class PdfViewer {
   }
 
   setZoom(zoom: number) {
+    // 缩放后页面高度变了，保持视口停在原来读到的地方
+    const pos = this.currentPosition();
     this.zoom = Math.min(3, Math.max(0.5, zoom));
     this.layoutPages();
+    this.scrollToPosition(pos);
   }
 
   /** 重试失败的段落：清掉失败记录，可见的页重新请求 */

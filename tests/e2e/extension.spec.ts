@@ -1418,6 +1418,40 @@ test('PDF 阅读器：两栏页面上拖选左栏两段，不会把夹在中间�
   await page.close();
 });
 
+test('PDF 阅读器：记住阅读位置，再次打开回到上次读到的页；缩放后仍停在原处', async () => {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/pdf.html?file=${encodeURIComponent(`${server.url}/sample.pdf`)}`);
+  await expect(page.locator('#progress')).toContainText('已翻译');
+  /** 工具栏下沿落在第几页的什么位置 */
+  const where = () =>
+    page.evaluate(() => {
+      const top = document.querySelector('.toolbar')!.getBoundingClientRect().bottom;
+      for (const el of document.querySelectorAll<HTMLElement>('.page')) {
+        const r = el.getBoundingClientRect();
+        if (r.bottom > top) return { page: Number(el.dataset.page), offset: Math.round(((top - r.top) / r.height) * 10) / 10 };
+      }
+      return undefined;
+    });
+  // 滚到第 2 页的 10% 处（最后一页，滚不了太深）
+  await page.evaluate(() => {
+    const el = document.querySelector<HTMLElement>('.page[data-page="2"]')!;
+    const top = document.querySelector('.toolbar')!.getBoundingClientRect().bottom;
+    window.scrollBy(0, el.getBoundingClientRect().top + el.getBoundingClientRect().height * 0.1 - top);
+  });
+  await expect.poll(where).toEqual({ page: 2, offset: 0.1 });
+  const stored = () => sw.evaluate(async () => Object.values(((await chrome.storage.local.get('pdfPositions')).pdfPositions ?? {}) as Record<string, { page: number }>).map((p) => p.page));
+  await expect.poll(stored).toEqual([2]);
+
+  await page.reload();
+  await expect(page.locator('#doc-title')).toHaveText('sample.pdf');
+  await expect.poll(where).toEqual({ page: 2, offset: 0.1 });
+  // 放大后视口仍停在第 2 页的同一处
+  await page.locator('#zoom-in').click();
+  await expect.poll(where).toEqual({ page: 2, offset: 0.1 });
+  await page.close();
+  await sw.evaluate(() => chrome.storage.local.remove('pdfPositions'));
+});
+
 test('PDF 自动打开：开关打开后，不带 .pdf 后缀的 PDF 地址直接进阅读器；「原文件」放行不再转回；关掉后规则删除', async () => {
   const setAutoOpen = (on: boolean) =>
     sw.evaluate(async (on) => {
