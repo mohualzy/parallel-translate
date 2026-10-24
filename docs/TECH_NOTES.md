@@ -169,6 +169,7 @@
 - 单独送去翻译的作者姓名会被模型音译（论文风格下还加括注），prompt 约束不可靠，要在版面分析里识别出来直接保留（D53）。
 - 对默认（GPU 加速）的 canvas 反复 `getImageData`，Chrome 会警告「Multiple readback operations…willReadFrequently」，并记进扩展的「错误」列表。只读的底图用 `getContext('2d', { willReadFrequently: true })` 放在内存里，判断纯色底、取底色都读底图；译文画布只写不读，留在 GPU 上。`willReadFrequently` 只在第一次 `getContext` 时生效，要在创建处传。
 - 浏览器原生的查找（Ctrl+F、`window.find`）不能跨绝对定位的元素匹配：透明文字层每行一个绝对定位的 span，折行处的短语搜不到（中文尤其常见）。透明、`scaleX`、`overflow: hidden` 本身不影响查找。
+- 透明文字层的选区按 DOM 顺序扩展：块的顺序必须是阅读顺序（先左栏后右栏），按纵坐标排会在两栏间交错，拖选左栏会带上右栏。用 Playwright 的 `page.mouse` 做真实拖选能复现；连续测多次时每次先清空选区，否则起点落在旧选区上会变成拖动已选文字。
 - 透明文字层块末尾的 `<br>` 不能 `display: none`：复制时按渲染结果序列化，隐藏的 `<br>` 也被跳过，段落就连在一起了。块容器设 `height: 0`，免得 `<br>` 撑出的行挡住页面顶部。
 - 后台标签页（`document.visibilityState === 'hidden'`）不跑渲染流程，IntersectionObserver 不触发，阅读器不会渲染页面；用 CDP 在后台标签页实测时，要反复截图推动渲染。
 - 中文字体族名因平台而异：Windows 上的 Noto 是 `Noto Serif SC` / `Noto Sans SC`，Linux 发行版常见 `Noto Serif CJK SC`，字体栈两种都要写。可用 PowerShell `System.Drawing.Text.PrivateFontCollection` 读字体文件的族名核对。
