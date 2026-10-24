@@ -13,6 +13,8 @@ export interface Glyph {
   y: number;
   fill: string;
   font: string;
+  /** pdf.js 载入的字体 id（ctx.font 里的字体名），与文本项的 fontId 对应 */
+  fontId: string;
   /** 设备像素下的宽度 */
   w: number;
 }
@@ -54,6 +56,7 @@ export async function renderPage(page: PdfPage, viewport: pdfjs.PageViewport): P
       y: t.b * x + t.d * y + t.f,
       fill: String(this.fillStyle),
       font: this.font,
+      fontId: /px\s+"?([^",]+)/.exec(this.font)?.[1]?.trim() ?? '',
       w: this.measureText(text).width * scaleX,
     });
   };
@@ -99,6 +102,7 @@ export async function extractText(page: PdfPage, viewport: pdfjs.PageViewport): 
       w: it.width * viewport.scale,
       size,
       font: font.name,
+      fontId: it.fontName,
       rotated: Math.abs(t[1]) > 0.01 * size || Math.abs(t[2]) > 0.01 * size,
       mono: MONO_FONT.test(font.name) || content.styles[it.fontName]?.fontFamily === 'monospace',
     });

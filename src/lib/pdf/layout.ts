@@ -15,10 +15,14 @@ export interface PdfTextItem {
   size: number;
   /** 原字体名，如 ABCDEF+CMMI10 */
   font: string;
+  /** pdf.js 载入的字体 id（与渲染时 ctx.font 里的字体名相同），用来把字形对应到文本项 */
+  fontId?: string;
   /** 是否旋转（竖排水印等） */
   rotated: boolean;
   /** 等宽字体（代码） */
   mono: boolean;
+  /** 文字颜色（渲染时记录的字形颜色）；链接、引用常和正文颜色不同 */
+  color?: string;
 }
 
 export interface PdfLine {
@@ -54,6 +58,12 @@ export interface PdfBlock {
   bottom: number;
   size: number;
   align: 'left' | 'center';
+  /** 首行相对块左边的缩进（段首缩进） */
+  firstIndent: number;
+  /** 其余行相对块左边的缩进（列表、参考文献的悬挂缩进） */
+  restIndent: number;
+  /** 表格单元格：译文留在原位，不和上下的块连排，免得错开所在的行 */
+  cell: boolean;
   /** 待翻译片段：已转义，原子为 <xN/> */
   text: string;
   atoms: PdfAtom[];
@@ -63,8 +73,14 @@ export interface PdfBlock {
 
 /** TeX 等的公式字体 */
 const MATH_FONT = /CMMI|CMSY|CMEX|CMBSY|MSAM|MSBM|Math|Symbol|rsfs|EUFM|EUSM|esint|wasy|stmary|LMMath|STIX.*(Math|Two)/i;
+/** 大号定界符、大型运算符的字体：字形从基线往下挂（cases 的大括号、行间的求和号） */
+const HANGING_FONT = /CMEX|esint|MathExtension/i;
 /** 等宽字体：代码 */
 export const MONO_FONT = /Mono|Courier|CMTT|Consol|Menlo|Inconsolata|Code|SFMono/i;
+/** 无衬线字体：译文的中文、缺字的英文据此选黑体还是宋体（pdf.js 按字体标志判断，TeX 生成的 PDF 常常判错） */
+export const SANS_FONT = /Sans|Helvetica|Arial|Calibri|Verdana|Tahoma|Segoe|Roboto|Lato|Gothic|Grotesk|Inter\b|CMSS|NimbusSan|Lucida(?!.*Bright)/i;
+/** 斜体 */
+export const ITALIC_FONT = /Ital|Oblique|Slant|-It\b|CMTI|CMSL/i;
 
 /** 字体族：去掉子集前缀、样式后缀和字号，如 ABCDEF+CMR10 → CMR */
 export function fontFamily(name: string): string {
@@ -76,6 +92,38 @@ export function fontFamily(name: string): string {
 
 const chars = (items: { str: string }[]) => items.reduce((n, i) => n + i.str.trim().length, 0);
 const center = (l: { x0: number; x1: number }) => (l.x0 + l.x1) / 2;
+/** 行的文字：文本项之间有间隙的补一个空格（「2.2」和标题文字常是两个文本项） */
+const lineText = (l: PdfLine) =>
+  l.items.map((i, k) => (k > 0 && i.x - (l.items[k - 1]!.x + l.items[k - 1]!.w) > i.size * 0.15 ? ' ' : '') + i.str).join('');
+/** 没挂靠上的公式碎片：零星几个公式字符（大括号这类往下挂的除外，它们属于下方的公式，不能并进上面的段落） */
+const isFragment = (l: PdfLine) => l.items.every((i) => i.math) && chars(l.items) <= 3 && !l.items.every((i) => HANGING_FONT.test(i.font));
+/** 列表项、参考文献条目、多级章节标题的开头：1. / 2) / • / (a) / [12] / 2.2 */
+const LIST_MARKER = /^\s*(\d{1,2}[.)]|\d{1,2}(\.\d{1,2})+\.?|[•●▪◦‣∙·–—-]|\([a-z0-9]{1,3}\)|\[\d{1,3}\])\s/i;
+/** 人名里的一个词：首字母大写（可带缩写点、连字符），或姓氏前的小写介词 */
+const NAME_WORD = /^(\p{Lu}[\p{L}'’]*\.?(-\p{Lu}?[\p{L}'’]*\.?)*|van|von|der|den|de|di|da|du|del|la|le|bin)$/u;
+/** 机构名里的词：有这些词的是单位，要翻译 */
+const ORG_WORD = /^(Universit\p{L}*|Institut\p{L}*|College|School|Laborator\p{L}*|Lab|Labs|Department|Dept\.?|Cent(er|re)|Academy|Hospital|Foundation|Research|Faculty)$/u;
+
+/** 作者姓名行：一个或多个「名 姓」，可带上标编号、星号，用逗号或 and 分隔 */
+function isNameLine(text: string): boolean {
+  const plain = text.replace(/<x\d+\/>/g, ' ').replace(/[\d*†‡§¶∗]/g, ' ');
+  const chunks = plain
+    .split(/,|\band\b|&amp;/)
+    .map((c) => c.trim().split(/\s+/).filter(Boolean))
+    .filter((c) => c.length > 0);
+  return chunks.length > 0 && chunks.every((c) => c.length >= 2 && c.length <= 4 && c.every((w) => NAME_WORD.test(w) && !ORG_WORD.test(w)));
+}
+
+/** 行的主字体（按字数，不含挂靠的上下标）：作者栏里姓名与单位常常只差在正体 / 斜体 */
+function lineFont(l: PdfLine): string {
+  const count = new Map<string, number>();
+  for (const i of l.items) {
+    if (i.attached) continue;
+    const font = i.font.replace(/^[A-Z]{6}\+/, '');
+    count.set(font, (count.get(font) ?? 0) + i.str.trim().length);
+  }
+  return [...count].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+}
 
 /** 文本项 → 行：先按字号从大到小建主行，再把上下标、根号等挂靠到主行，最后合并同一基线上被宽下标断开的片段 */
 export function buildLines(raw: PdfTextItem[]): PdfLine[] {
@@ -98,10 +146,41 @@ export function buildLines(raw: PdfTextItem[]): PdfLine[] {
     } else lines.push({ y: it.y, size: it.size, x0: it.x, x1: it.x + it.w, items: [it] });
   }
 
-  // 挂靠：全是公式字体的片段（根号、求和号、上下标）不论大小；非公式的只挂靠明显更小的零星字符，避免吞掉正常的小字行
-  for (const l of [...lines].sort((a, b) => a.size - b.size)) {
+  // 零星片段按间隙拆开再挂靠：求和号的下限和后面 q_i、k_i 的下标高度相近，第一遍会并成一行，
+  // 整体跨过下一段正文的起点，哪一行都挂不上。拆开后挂不上的片段，最后一步会按同基线重新合并
+  for (const l of [...lines]) {
+    if (!l.items.every((i) => i.math) && chars(l.items) > 12) continue;
+    const groups: LineItem[][] = [];
+    for (const it of [...l.items].sort((a, b) => a.x - b.x)) {
+      const last = groups.at(-1)?.at(-1);
+      if (last && it.x - (last.x + last.w) <= l.size * 0.5) groups.at(-1)!.push(it);
+      else groups.push([it]);
+    }
+    if (groups.length < 2) continue;
+    lines.splice(
+      lines.indexOf(l),
+      1,
+      ...groups.map((g) => ({ y: g[0]!.y, size: l.size, x0: Math.min(...g.map((i) => i.x)), x1: Math.max(...g.map((i) => i.x + i.w)), items: g })),
+    );
+  }
+
+  // 挂靠：全是公式字体的片段（根号、求和号、上下标）不论大小；非公式的只挂靠明显更小的零星字符，避免吞掉正常的小字行。
+  // 大号符号先挂：求和号挂上主行后，主行的右边界才到得了它下面的上下限
+  const isHanging = (l: PdfLine) => l.items.every((i) => HANGING_FONT.test(i.font));
+  for (const l of [...lines].sort((a, b) => Number(isHanging(b)) - Number(isHanging(a)) || a.size - b.size)) {
     const allMath = l.items.every((i) => i.math);
     if (!allMath && chars(l.items) > 12) continue;
+    // 求和号的上下限（i=1）常混着罗马体的 = 和数字，几个字符里有公式字体就算公式碎片
+    const mathy = allMath || (chars(l.items) <= 4 && l.items.some((i) => i.math));
+    // 大括号等挂在基线下方，只能属于基线同高或更低的行（否则会挂到上一段正文的末行，跟着译文挪走）
+    const hanging = isHanging(l);
+    // 左右距离只算一半：脚注标记 ‡ 在下一行行首左上方，离上一行的基线反而更近
+    const distance = (h: PdfLine) => Math.abs(h.y - l.y) + Math.max(0, h.x0 - l.x0, l.x0 - h.x1) * 0.5;
+    const near = (h: PdfLine) =>
+      hanging
+        ? h.y >= l.y - l.size * 0.2 && h.y - l.y < h.size * 2.5
+        : // 公式碎片（根号、分子）常夹在两行之间，放宽到 0.85 个字号，比主行小的上下限再放宽到 1 个；其余按 0.75
+          Math.abs(h.y - l.y) < h.size * (mathy ? (l.size < h.size * 0.85 ? 1 : 0.85) : 0.75);
     // 上下标、根号、分子分母只会出现在主行正文的空隙或行尾；和某行正文水平重叠，就不是那一行的
     // （否则夹在两行之间的根号会挂到上一行，和本行的公式连成一个横跨半行的原子）
     const overlapsText = (h: PdfLine) =>
@@ -110,16 +189,16 @@ export function buildLines(raw: PdfTextItem[]): PdfLine[] {
       .filter(
         (h) =>
           h !== l &&
-          // 公式碎片（根号、分子）常夹在两行之间，放宽到 0.85 个字号；其余按 0.75
-          Math.abs(h.y - l.y) < h.size * (allMath ? 0.85 : 0.75) &&
+          near(h) &&
           l.x0 >= h.x0 - h.size &&
           // 行末的分式：分子在主行最后一个词之后，此时主行还没挂上后面的公式，右边界偏左
           l.x0 <= h.x1 + h.size * 1.5 &&
           // 主行字号明显更大；同字号的公式符号（根号）则要求主行更长，避免两个公式片段互相挂靠
-          (h.size > l.size * 1.15 || (allMath && chars(h.items) > chars(l.items))) &&
+          (h.size > l.size * 1.15 || (mathy && chars(h.items) > chars(l.items))) &&
           !overlapsText(h),
       )
-      .sort((a, b) => Math.abs(a.y - l.y) - Math.abs(b.y - l.y))[0];
+      // 取最近的：上下距离加左右距离（同一基线上并排两段时，下标归它正下方或紧挨着的那段）
+      .sort((a, b) => distance(a) - distance(b))[0];
     if (!host) continue;
     host.items.push(...l.items.map((i) => ({ ...i, attached: true })));
     host.x0 = Math.min(host.x0, l.x0);
@@ -149,8 +228,22 @@ export function buildLines(raw: PdfTextItem[]): PdfLine[] {
   return lines;
 }
 
+/**
+ * 表格单元格所在的行：本身不长，同一基线上还有至少两段互不相连的短文字（数字、短标签）。
+ * 只看短文字，是为了不把两栏正文、行间公式旁的编号当成表格。
+ */
+export function tableCells(lines: PdfLine[]): Set<PdfLine> {
+  const cells = new Set<PdfLine>();
+  for (const l of lines) {
+    if (l.x1 - l.x0 >= l.size * 20) continue;
+    const row = lines.filter((o) => o !== l && Math.abs(o.y - l.y) < l.size * 0.3 && (o.x0 > l.x1 || o.x1 < l.x0) && o.x1 - o.x0 < o.size * 8);
+    if (row.length >= 2) cells.add(l);
+  }
+  return cells;
+}
+
 /** 行 → 段落块：同栏（水平重叠）、字号相近、行距正常的行连成一块；首行缩进或上一行是短末行时另起一段，居中排版不切 */
-export function buildBlocks(lines: PdfLine[]): PdfLine[][] {
+export function buildBlocks(lines: PdfLine[], cells: Set<PdfLine> = tableCells(lines)): PdfLine[][] {
   const blocks: { lines: PdfLine[]; x0: number; x1: number; size: number }[] = [];
   for (const l of [...lines].sort((a, b) => a.y - b.y || a.x0 - b.x0)) {
     const b = blocks
@@ -169,15 +262,28 @@ export function buildBlocks(lines: PdfLine[]): PdfLine[][] {
       });
     const prev = b?.lines.at(-1);
     // 没挂靠上的公式碎片（零星几个公式字符）不能触发分段，否则会从中间把段落切开
-    const fragment = l.items.every((i) => i.math) && chars(l.items) <= 3;
-    if (b && fragment) {
+    if (b && isFragment(l)) {
       b.lines.push(l);
       continue;
     }
     const centered = prev !== undefined && Math.abs(center(prev) - center(l)) < l.size * 0.5 && Math.abs(prev.x0 - l.x0) > l.size * 0.5;
-    const indented = prev !== undefined && l.x0 > prev.x0 + l.size * 0.7 && l.x0 > b!.x0 + l.size * 0.7;
+    // 列表项、参考文献的悬挂缩进：首行以编号开头，后续行缩进对齐正文，不是新段落
+    const hanging = b !== undefined && b.lines.length === 1 && LIST_MARKER.test(lineText(prev!)) && l.x0 < prev!.x0 + l.size * 4;
+    const indented = prev !== undefined && !hanging && l.x0 > prev.x0 + l.size * 0.7 && l.x0 > b!.x0 + l.size * 0.7;
     const prevShort = prev !== undefined && prev.x1 < b!.x1 - l.size * 2.5;
-    if (b && !centered && (indented || prevShort)) {
+    // 悬挂缩进的下一项：编号行比上一行往左突出；或是以脚注标记（* † ‡ 或上标数字）开头的下一条脚注
+    const nextItem =
+      prev !== undefined &&
+      ((LIST_MARKER.test(lineText(l)) && l.x0 < prev.x0 - l.size * 0.5) ||
+        /^[*†‡§¶∗]/.test(lineText(l).trim()) ||
+        (l.items[0]!.attached && /^\d{1,2}$/.test(l.items[0]!.str.trim()) && l.items[0]!.y < l.y));
+    // 作者栏这类短行的堆叠（姓名一行、单位一行）：字体不同就是不同的条目；
+    // 网格里上下两格的中线不一定对齐，所以短行只要求中线接近
+    const short = prev !== undefined && Math.max(prev.x1 - prev.x0, l.x1 - l.x0) < l.size * 15 && Math.abs(center(prev) - center(l)) < l.size * 2;
+    const restyled = prev !== undefined && (centered || short) && lineFont(prev) !== lineFont(l);
+    // 表格里上下相邻的单元格各自独立（段落的短末行可以挨着表格，所以只看上一行）
+    const afterCell = prev !== undefined && cells.has(prev);
+    if (b && (restyled || afterCell || (!centered && (indented || prevShort || nextItem)))) {
       blocks.push({ lines: [l], x0: l.x0, x1: l.x1, size: l.size });
     } else if (b) {
       b.lines.push(l);
@@ -190,12 +296,29 @@ export function buildBlocks(lines: PdfLine[]): PdfLine[][] {
 
 const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** 块 → 待翻译片段：公式字体、等宽字体、挂靠的上下标连成原子，用 <xN/> 占位；行末连字符断词合并 */
+/** 块的正文颜色：字数最多的颜色 */
+function bodyColor(lines: PdfLine[]): string | undefined {
+  const count = new Map<string, number>();
+  for (const l of lines) for (const i of l.items) if (i.color) count.set(i.color, (count.get(i.color) ?? 0) + i.str.trim().length);
+  return [...count].sort((a, b) => b[1] - a[1])[0]?.[0];
+}
+
+/**
+ * 块 → 待翻译片段：公式字体、等宽字体、挂靠的上下标连成原子，用 <xN/> 占位；行末连字符断词合并。
+ * 和正文颜色不同的短片段（引用编号、交叉引用、链接）也作为原子：不需要翻译，写回时保留原来的颜色。
+ */
 export function buildSegment(lines: PdfLine[], bodyFamily: string): { text: string; atoms: PdfAtom[]; atomChars: number; allChars: number } {
   const atoms: PdfAtom[] = [];
   let text = '';
   let atomChars = 0;
   let allChars = 0;
+  const body = bodyColor(lines);
+  // 短的彩色片段，或带年份的（作者-年份式引用，一串可以很长）；长的彩色句子照常翻译
+  const accent = (it: LineItem) =>
+    body !== undefined &&
+    it.color !== undefined &&
+    it.color !== body &&
+    ((it.str.match(/\p{L}+/gu) ?? []).length <= 4 || /\b(19|20)\d{2}[a-z]?\b/.test(it.str));
   lines.forEach((line, li) => {
     let cur: PdfAtom | undefined;
     const flush = () => {
@@ -208,7 +331,11 @@ export function buildSegment(lines: PdfLine[], bodyFamily: string): { text: stri
       const prev = line.items[k - 1];
       const spaced = prev !== undefined && it.x - (prev.x + prev.w) > it.size * 0.15;
       const atomish =
-        it.math || it.mono || it.attached || (cur !== undefined && fontFamily(it.font) !== bodyFamily && it.x - cur.x1 < it.size * 0.4);
+        it.math ||
+        it.mono ||
+        it.attached ||
+        accent(it) ||
+        (cur !== undefined && fontFamily(it.font) !== bodyFamily && it.x - cur.x1 < it.size * 0.4);
       const n = it.str.trim().length;
       allChars += n;
       if (atomish) {
@@ -246,7 +373,8 @@ export function analyzePage(items: PdfTextItem[], pageWidth: number): PdfBlock[]
   for (const l of lines) for (const i of l.items) count.set(fontFamily(i.font), (count.get(fontFamily(i.font)) ?? 0) + i.str.length);
   const bodyFamily = [...count].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
 
-  return buildBlocks(lines).map((blockLines) => {
+  const cells = tableCells(lines);
+  return buildBlocks(lines, cells).map((blockLines) => {
     const seg = buildSegment(blockLines, bodyFamily);
     const first = blockLines[0]!;
     const last = blockLines.at(-1)!;
@@ -255,7 +383,13 @@ export function analyzePage(items: PdfTextItem[], pageWidth: number): PdfBlock[]
     const x1 = Math.max(...blockLines.map((l) => l.x1));
     const plain = seg.text.replace(/<x\d+\/>/g, '');
     const words = plain.match(/\p{L}{3,}/gu) ?? [];
+    // 作者栏的姓名：单独一行、上下紧挨着字体不同的行（单位）。单独送去翻译时模型会音译，而且音译常常是错的
+    const authorName =
+      blockLines.length === 1 &&
+      isNameLine(seg.text) &&
+      lines.some((o) => o !== first && Math.abs(o.y - first.y) < size * 2.2 && Math.abs(center(o) - center(first)) < size * 2 && lineFont(o) !== lineFont(first));
     const keep =
+      authorName ||
       words.length === 0 ||
       (seg.allChars > 0 && seg.atomChars / seg.allChars > 0.5) ||
       // 行间公式：带公式且真正的单词不到 3 个，如 Attention(Q, K, V) = softmax(…)
@@ -265,8 +399,14 @@ export function analyzePage(items: PdfTextItem[], pageWidth: number): PdfBlock[]
       blockLines.length > 1 &&
       blockLines.every((l) => Math.abs(center(l) - center(first)) < size * 0.5) &&
       blockLines.some((l) => Math.abs(l.x0 - first.x0) > size * 0.5);
-    // 单行：位于页面中线附近、两侧留白明显（标题、居中的章节名）
-    const singleCentered = blockLines.length === 1 && Math.abs(center(first) - pageWidth / 2) < pageWidth * 0.02 && x0 > pageWidth * 0.15;
+    // 单行：位于页面中线附近、两侧留白明显（标题、居中的章节名），或和上下相邻的行居中对齐（作者栏的单位）
+    const singleCentered =
+      blockLines.length === 1 &&
+      ((Math.abs(center(first) - pageWidth / 2) < pageWidth * 0.02 && x0 > pageWidth * 0.15) ||
+        lines.some(
+          (l) => l !== first && Math.abs(l.y - first.y) < size * 2.2 && Math.abs(center(l) - center(first)) < size * 0.5 && Math.abs(l.x0 - first.x0) > size * 0.5,
+        ));
+    const rest = blockLines.slice(1).filter((l) => !isFragment(l));
     return {
       lines: blockLines,
       x0,
@@ -275,6 +415,9 @@ export function analyzePage(items: PdfTextItem[], pageWidth: number): PdfBlock[]
       bottom: last.y + last.size * 0.3,
       size,
       align: multiCentered || singleCentered ? 'center' : 'left',
+      cell: blockLines.length === 1 && cells.has(first),
+      firstIndent: first.x0 - x0,
+      restIndent: rest.length > 0 ? Math.min(...rest.map((l) => l.x0)) - x0 : 0,
       text: seg.text,
       atoms: seg.atoms,
       keep,
