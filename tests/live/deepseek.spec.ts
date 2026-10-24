@@ -200,6 +200,32 @@ test('真实模型：输入框翻译成英文，保留换行、@提及和链接�
   await page.close();
 });
 
+test('真实模型：技术文档、社交媒体两种风格下都遵守分段与占位协议', async () => {
+  test.setTimeout(180_000);
+  const setProfile = (profile: string) =>
+    sw.evaluate(async (p) => {
+      const { settings } = await chrome.storage.local.get('settings');
+      await chrome.storage.local.set({ settings: { ...(settings as object), siteProfiles: { '127.0.0.1': p } } });
+    }, profile);
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  for (const profile of ['tech', 'social']) {
+    await setProfile(profile);
+    await page.reload();
+    await toggle(page);
+    const link = translation(page, '#p-link');
+    await expect(link).toHaveText(CJK, { timeout: 60_000 });
+    await expect(link.locator('code')).toHaveText('npm install');
+    await expect(translation(page, '#p-second')).toHaveText(CJK, { timeout: 60_000 });
+    const leaked = await page.locator('ptx-t').evaluateAll((els) =>
+      els.map((e) => e.textContent ?? '').filter((t) => /<\/?[gxs]\d|<s id=/.test(t)),
+    );
+    expect(leaked, profile).toEqual([]);
+  }
+  await setProfile('general');
+  await page.close();
+});
+
 test('真实模型：设置页测试连接成功', async () => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/options.html`);

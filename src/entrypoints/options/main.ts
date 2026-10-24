@@ -2,8 +2,8 @@ import '@/ui/base.css';
 import './style.css';
 import { browser } from 'wxt/browser';
 import { sendToBackground } from '@/lib/messages';
+import { getProfile } from '@/lib/profiles';
 import { parseExtraBody } from '@/lib/providers/openai';
-import { defaultStylePrompt } from '@/lib/providers/prompt';
 import {
   createProvider,
   DEFAULT_SETTINGS,
@@ -136,7 +136,6 @@ function initProviders() {
     PROVIDER_PRESETS.map((p, i) => [String(i), p.label]),
     '0',
   );
-  field<HTMLTextAreaElement>('prompt').placeholder = defaultStylePrompt(settings.targetLang);
 
   form.addEventListener('input', () => (dirty = true));
 
@@ -353,10 +352,44 @@ function initData() {
   });
 }
 
+// ---------- 翻译风格：已为网站指定的档案 ----------
+
+function renderSiteProfiles() {
+  const list = $('#site-profiles');
+  const entries = Object.entries(settings.siteProfiles);
+  if (entries.length === 0) {
+    list.innerHTML = '<li class="muted">还没有为任何网站指定风格</li>';
+    return;
+  }
+  list.replaceChildren(
+    ...entries.map(([host, id]) => {
+      const li = document.createElement('li');
+      const name = document.createElement('b');
+      name.textContent = host;
+      const profile = document.createElement('span');
+      profile.textContent = getProfile(id).name;
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn';
+      remove.textContent = '改回自动';
+      remove.addEventListener('click', async () => {
+        const siteProfiles = { ...settings.siteProfiles };
+        delete siteProfiles[host];
+        settings = await saveSettings({ siteProfiles });
+        renderSiteProfiles();
+        toast('已保存');
+      });
+      li.append(name, profile, remove);
+      return li;
+    }),
+  );
+}
+
 async function init() {
   [settings, providers] = await Promise.all([getSettings(), getProviders()]);
   initProviders();
   initPreferences();
+  renderSiteProfiles();
   initData();
 }
 

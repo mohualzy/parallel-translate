@@ -4,7 +4,7 @@ import type { Settings } from '@/lib/settings';
 import { findSiteRule } from '@/lib/site-rules';
 import { collectRuns, runContainsPoint, type Run } from './collect';
 import { buildExcludeSelector, composedParent, CONTENT_CONTAINERS, DomClassifier, looksLikeUIChrome, OWN_TAG } from './dom';
-import { pageContext } from './page-context';
+import { pageAutoProfile, pageContext, pageProfile } from './page-context';
 import { deserialize, sameText, serialize } from './richtext';
 import { ensureShadowStyles } from './shadow-styles';
 import { TitleTranslator } from './title';
@@ -212,10 +212,10 @@ export class PageTranslator {
     const modeChanged = prev.displayMode !== next.displayMode;
     if (excludeChanged || modeChanged) this.classifier = classifierFor(next);
 
-    // 影响译文内容的设置：清空重来（命中缓存的段落会很快回来）
-    const contentChanged = (['targetLang', 'richText', 'activeProviderId', 'skipShortUI'] as const).some(
-      (k) => prev[k] !== next[k],
-    );
+    // 影响译文内容的设置：清空重来（命中缓存的段落会很快回来）；当前网站的风格档案变了也要按新风格重翻
+    const contentChanged =
+      (['targetLang', 'richText', 'activeProviderId', 'skipShortUI'] as const).some((k) => prev[k] !== next[k]) ||
+      pageProfile(prev.siteProfiles) !== pageProfile(next.siteProfiles);
     // 切换显示方式会改变翻译范围：仅译文模式下按钮、短界面文字也要翻译（双语对照时跳过）
     if (excludeChanged || contentChanged || modeChanged) {
       const wasEnabled = this.enabled;
@@ -280,7 +280,15 @@ export class PageTranslator {
       if (p.state === 'done') done++;
       else if (p.state === 'error') failed++;
     }
-    return { enabled: this.enabled, total: this.paragraphs.size, done, failed, pageLang: this.pageLang };
+    return {
+      enabled: this.enabled,
+      total: this.paragraphs.size,
+      done,
+      failed,
+      pageLang: this.pageLang,
+      profile: pageProfile(this.settings.siteProfiles),
+      autoProfile: pageAutoProfile(),
+    };
   }
 
   // ---------- 段落登记 ----------
@@ -531,7 +539,7 @@ export class PageTranslator {
       this.renderLoading(p);
     }
     try {
-      const res = await sendToBackground({ type: 'translate', segments: batch.map((p) => p.source), page: pageContext(this.title.originalTitle) });
+      const res = await sendToBackground({ type: 'translate', segments: batch.map((p) => p.source), page: pageContext(this.title.originalTitle, this.settings.siteProfiles) });
       if (generation !== this.generation) return;
       batch.forEach((p, i) => {
         if (!this.paragraphs.has(p)) return;

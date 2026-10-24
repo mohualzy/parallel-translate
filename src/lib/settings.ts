@@ -38,6 +38,8 @@ export interface Settings {
   autoTranslateForeign: boolean;
   alwaysTranslateSites: string[];
   neverTranslateSites: string[];
+  /** 用户为网站指定的翻译风格档案：主机名 → 档案 id（lib/profiles.ts），未指定的网站自动选择 */
+  siteProfiles: Record<string, string>;
   /** 使用内置的常见网站适配规则（lib/site-rules.ts） */
   siteRules: boolean;
   /** 额外排除的 CSS 选择器（命中的元素及其子树不翻译） */
@@ -86,6 +88,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoTranslateForeign: false,
   alwaysTranslateSites: [],
   neverTranslateSites: [],
+  siteProfiles: {},
   siteRules: true,
   excludeSelectors: [],
   glossary: '',

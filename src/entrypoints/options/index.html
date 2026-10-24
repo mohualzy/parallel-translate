@@ -84,9 +84,9 @@
                 <input type="checkbox" name="stream" /> 流式请求（推荐：慢模型/长批次时更不容易超时）
               </label>
               <label class="field">
-                <span>自定义翻译要求（风格、术语等；留空使用默认）</span>
-                <textarea name="prompt" rows="4" id="prompt-input"></textarea>
-                <small class="muted">输出格式约束由程序自动追加，这里只需写风格要求，例如「技术文档风格，API 名称保留英文」。</small>
+                <span>额外的翻译要求（可留空）</span>
+                <textarea name="prompt" rows="4" id="prompt-input" placeholder="例如：API 名称保留英文；称呼用「您」"></textarea>
+                <small class="muted">叠加在网站的翻译风格（通用、技术文档、学术论文等，可在弹窗里切换）之后，对这个服务的所有网页翻译生效。输出格式约束由程序自动追加。</small>
               </label>
               <label class="field">
                 <span>额外请求参数（JSON，合并进请求体）</span>
@@ -192,6 +192,11 @@
               <textarea data-setting="excludeSelectors" data-list rows="3" placeholder=".comment-author&#10;#sidebar"></textarea>
               <small class="muted">域名同时匹配子域名，例如 example.com 也匹配 www.example.com。</small>
             </label>
+            <div class="field">
+              <span>翻译风格</span>
+              <ul id="site-profiles" class="site-profiles"></ul>
+              <small class="muted">在弹窗里可以为当前网站选择风格（技术文档、学术论文、新闻、社交媒体、文学）。未指定的网站自动选择：带论文元数据的页面用学术论文，GitHub 与文档站用技术文档，常见新闻网站用新闻，X、Reddit、Hacker News 用社交媒体，其余用通用。</small>
+            </div>
             <label class="check"><input type="checkbox" data-setting="siteRules" /> 使用内置的常见网站适配规则（Hacker News 只翻标题和评论；GitHub 跳过代码、diff、文件列表等；X 不翻用户名和趋势）</label>
           </div>
         </section>

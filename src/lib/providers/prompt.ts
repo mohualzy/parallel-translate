@@ -1,25 +1,34 @@
 import type { GlossaryEntry } from '../glossary';
 import { baseLang, getLanguage } from '../languages';
+import { getProfile } from '../profiles';
 import type { ChatMessage } from './types';
 
 /** prompt 协议有不兼容修改时 +1，使旧缓存失效 */
 export const PROMPT_VERSION = 2;
 
-export const DEFAULT_STYLE_PROMPT =
-  'Translate faithfully and fluently, the way a native speaker would write it. ' +
-  'Keep proper nouns, product names, code identifiers and URLs unchanged when that reads better.';
+/** 默认风格即「通用」档案 */
+export const DEFAULT_STYLE_PROMPT = getProfile('general').en;
+export const DEFAULT_STYLE_PROMPT_ZH = getProfile('general').zh;
 
-export const DEFAULT_STYLE_PROMPT_ZH =
-  '译文忠实、通顺，像母语者写的文字，避免翻译腔。专有名词、产品名、代码标识符和 URL 在保留原文更易读时保持不变。';
-
-export function defaultStylePrompt(targetLang: string): string {
-  return baseLang(targetLang) === 'zh' ? DEFAULT_STYLE_PROMPT_ZH : DEFAULT_STYLE_PROMPT;
+/**
+ * 风格要求 = 档案的风格文本 + 用户在服务配置里写的自定义要求（叠加在后，见 DECISIONS D46）。
+ * 格式协议由 system prompt 固定部分保证，这里怎么写都改不坏。
+ */
+export function stylePrompt(targetLang: string, profile?: string, custom?: string): string {
+  const zh = baseLang(targetLang) === 'zh';
+  const p = getProfile(profile);
+  const base = zh ? p.zh : p.en;
+  const extra = custom?.trim();
+  if (!extra) return base;
+  return zh ? `${base}\n额外要求：${extra}` : `${base}\nAdditional requirements: ${extra}`;
 }
 
 export interface PromptOptions {
   targetLang: string;
-  /** 用户自定义的风格要求，空则用默认 */
+  /** 用户在服务配置里写的自定义要求，叠加在档案风格之后 */
   stylePrompt?: string;
+  /** 翻译风格档案 id（lib/profiles.ts），缺省为通用 */
+  profile?: string;
   /** 页面标题，作为领域上下文帮助消歧 */
   title?: string;
   /** 页面摘要（meta description），同样只作上下文 */
@@ -80,7 +89,7 @@ ${style}`;
 export function buildMessages(segments: string[], opts: PromptOptions): ChatMessage[] {
   const zh = baseLang(opts.targetLang) === 'zh';
   const lang = getLanguage(opts.targetLang);
-  const style = opts.stylePrompt?.trim() || defaultStylePrompt(opts.targetLang);
+  const style = stylePrompt(opts.targetLang, opts.profile, opts.stylePrompt);
   const system =
     (zh ? chineseSystemPrompt(lang.name, style) : englishSystemPrompt(lang.englishName, style)) +
     glossarySection(opts.glossary, zh);

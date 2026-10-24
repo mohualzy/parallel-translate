@@ -36,10 +36,9 @@ describe('buildMessages', () => {
     expect(user?.content).toContain('Page title (context only, do not translate): Seite');
   });
 
-  it('自定义风格要求替换默认值，格式约束仍然保留', () => {
+  it('自定义风格要求叠加在默认风格之后，格式约束仍然保留', () => {
     const [system] = buildMessages(['x'], { targetLang: 'ja', stylePrompt: 'Use polite form.' });
-    expect(system?.content).toContain('Use polite form.');
-    expect(system?.content).not.toContain(DEFAULT_STYLE_PROMPT);
+    expect(system?.content).toContain(`${DEFAULT_STYLE_PROMPT}\nAdditional requirements: Use polite form.`);
     expect(system?.content).toContain('<s id="0">');
   });
 });
@@ -62,6 +61,27 @@ describe('划词 prompt', () => {
     const [sentSys, sentUser] = buildSelectionMessages('Hello world.', { targetLang: 'en', word: false });
     expect(sentSys?.content).toContain('Output only the translation');
     expect(sentUser?.content).toBe('<text>Hello world.</text>');
+  });
+});
+
+describe('风格档案', () => {
+  it('档案替换风格段，格式协议不变；自定义要求叠加在后', () => {
+    const [tech] = buildMessages(['Hi'], { targetLang: 'zh-CN', profile: 'tech' });
+    expect(tech?.content).toContain('技术文档');
+    expect(tech?.content).toContain('<s id="0">');
+    expect(tech?.content).not.toContain(DEFAULT_STYLE_PROMPT_ZH);
+
+    const [custom] = buildMessages(['Hi'], { targetLang: 'zh-CN', profile: 'social', stylePrompt: 'API 名称保留英文' });
+    expect(custom?.content).toContain('社交媒体');
+    expect(custom?.content).toContain('额外要求：API 名称保留英文');
+
+    const [en] = buildMessages(['Hallo'], { targetLang: 'en', profile: 'paper' });
+    expect(en?.content).toContain('academic paper');
+  });
+
+  it('未指定档案时用通用风格', () => {
+    const [system] = buildMessages(['Hi'], { targetLang: 'zh-CN' });
+    expect(system?.content).toContain(DEFAULT_STYLE_PROMPT_ZH);
   });
 });
 

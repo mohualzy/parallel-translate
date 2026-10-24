@@ -11,6 +11,8 @@ export interface PageContext {
   summary: string;
   /** 内容是视频字幕：相邻片段是连续台词，译文要口语、简洁 */
   subtitles?: boolean;
+  /** 翻译风格档案 id（lib/profiles.ts），由内容脚本按网站解析 */
+  profile?: string;
 }
 
 export type BackgroundRequest =
@@ -93,6 +95,9 @@ export interface TabState {
   done: number;
   failed: number;
   pageLang: string;
+  /** 当前页面实际使用的翻译风格档案，以及不考虑用户指定时自动选择的档案 */
+  profile: string;
+  autoProfile: string;
 }
 
 /**

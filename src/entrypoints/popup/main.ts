@@ -2,11 +2,13 @@ import '@/ui/base.css';
 import './style.css';
 import { browser } from 'wxt/browser';
 import { sendToTab, type TabState } from '@/lib/messages';
+import { getProfile, PROFILES } from '@/lib/profiles';
 import { getProviders, getSettings, saveSettings, type DisplayMode, type Settings } from '@/lib/settings';
 import { $, fillSelect, languageOptions, styleOptions } from '@/ui/labels';
 
 const toggleBtn = $<HTMLButtonElement>('#toggle');
 const retryBtn = $<HTMLButtonElement>('#retry');
+const profileSelect = $<HTMLSelectElement>('#profile');
 const statusEl = $('#status');
 const noticeEl = $('#notice');
 
@@ -15,6 +17,10 @@ let host = '';
 
 function renderState(state: TabState | undefined) {
   retryBtn.hidden = !state?.enabled || state.failed === 0;
+  // 「自动」后面显示当前页面自动选中的风格（论文页的判断依赖页面内容，只有内容脚本知道）
+  profileSelect.disabled = !state;
+  const auto = profileSelect.querySelector<HTMLOptionElement>('option[value="auto"]');
+  if (auto) auto.textContent = state ? `自动（${getProfile(state.autoProfile).name}）` : '自动';
   if (state) retryBtn.textContent = `重试失败的 ${state.failed} 段`;
   if (!state) {
     toggleBtn.disabled = true;
@@ -73,6 +79,7 @@ async function init() {
 
   fillSelect($<HTMLSelectElement>('#target-lang'), languageOptions(), settings.targetLang);
   fillSelect($<HTMLSelectElement>('#style'), styleOptions(), settings.translationStyle);
+  fillSelect(profileSelect, [['auto', '自动'], ...PROFILES.map((p): [string, string] => [p.id, p.name])], settings.siteProfiles[host] ?? 'auto');
   const activeId = providers.find((p) => p.id === settings.activeProviderId)?.id ?? providers[0]?.id ?? '';
   fillSelect(
     $<HTMLSelectElement>('#provider'),
@@ -95,6 +102,14 @@ async function init() {
   });
   $<HTMLSelectElement>('#style').addEventListener('change', async (e) => {
     settings = await saveSettings({ translationStyle: (e.target as HTMLSelectElement).value as Settings['translationStyle'] });
+  });
+  profileSelect.addEventListener('change', async () => {
+    if (!host) return;
+    // 只对当前网站生效；选「自动」即清除指定。页面收到设置变化后按新风格重翻
+    const siteProfiles = { ...settings.siteProfiles };
+    if (profileSelect.value === 'auto') delete siteProfiles[host];
+    else siteProfiles[host] = profileSelect.value;
+    settings = await saveSettings({ siteProfiles });
   });
   $<HTMLSelectElement>('#provider').addEventListener('change', async (e) => {
     settings = await saveSettings({ activeProviderId: (e.target as HTMLSelectElement).value });

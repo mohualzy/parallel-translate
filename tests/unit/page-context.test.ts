@@ -23,6 +23,12 @@ describe('pageSummary', () => {
 describe('pageContext', () => {
   it('使用传入的原始标题', () => {
     document.title = '已翻译的标题';
-    expect(pageContext('Original title ')).toEqual({ title: 'Original title', summary: '' });
+    expect(pageContext('Original title ')).toEqual({ title: 'Original title', summary: '', profile: 'general' });
+  });
+
+  it('有 citation_* meta 的页面按论文风格；用户为网站指定的风格优先', () => {
+    document.head.innerHTML = '<meta name="citation_title" content="Attention Is All You Need">';
+    expect(pageContext('T').profile).toBe('paper');
+    expect(pageContext('T', { [location.hostname]: 'news' }).profile).toBe('news');
   });
 });

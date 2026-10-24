@@ -1001,6 +1001,34 @@ test('网站规则：白名单内的短标题和正文照翻，白名单外的�
   await page.close();
 });
 
+test('翻译风格：论文页自动用学术论文风格；在弹窗里为网站改成文学风格后按新风格重翻', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/paper.html`);
+  await toggle(page);
+  await expect(translation(page, '#abstract')).toContainText('【译】We propose a method');
+  expect(server.systems.at(-1)).toContain('这是学术论文');
+
+  await page.bringToFront();
+  const popupPromise = context.waitForEvent('page');
+  await sw.evaluate(async (target) => {
+    const tab = (await chrome.tabs.query({})).find((t) => t.url === target)!;
+    await chrome.tabs.create({ windowId: tab.windowId, url: chrome.runtime.getURL('/popup.html'), active: false });
+  }, page.url());
+  const popup = await popupPromise;
+  const select = popup.locator('#profile');
+  await expect(select.locator('option[value="auto"]')).toHaveText('自动（学术论文）');
+  const before = server.systems.length;
+  await select.selectOption('fiction');
+  // 风格计入缓存键：同一段落按新风格重新请求
+  await expect.poll(() => server.systems.slice(before).some((s) => s.includes('这是小说或文学作品'))).toBe(true);
+  await expect(translation(page, '#abstract')).toContainText('【译】We propose a method');
+
+  await select.selectOption('auto');
+  await expect.poll(async () => (await storedSettings()).siteProfiles).toEqual({});
+  await popup.close();
+  await page.close();
+});
+
 test('设置页：显示已配置服务，测试连接与获取模型列表可用', async () => {
   const page = await context.newPage();
   const errors: string[] = [];

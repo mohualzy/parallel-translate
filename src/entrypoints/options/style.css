@@ -257,3 +257,23 @@ main {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.site-profiles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-profiles li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.site-profiles li b {
+  flex: 1;
+  font-weight: 500;
+}

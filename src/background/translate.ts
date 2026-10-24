@@ -67,10 +67,16 @@ async function complete(provider: ProviderConfig, messages: ChatMessage[]): Prom
 }
 
 /** 缓存键包含该段命中的术语：改了术语表的译法，旧缓存自然失效 */
-function cacheKey(provider: ProviderConfig, settings: Settings, segment: string, glossary: GlossaryEntry[]): Promise<string> {
+function cacheKey(
+  provider: ProviderConfig,
+  settings: Settings,
+  segment: string,
+  glossary: GlossaryEntry[],
+  profile: string,
+): Promise<string> {
   const terms = matchGlossary(glossary, [segment]).map((e) => [e.source, e.target]);
   return cache.sha256(
-    JSON.stringify([provider.baseURL, provider.model, settings.targetLang, PROMPT_VERSION, provider.prompt, terms, segment]),
+    JSON.stringify([provider.baseURL, provider.model, settings.targetLang, PROMPT_VERSION, provider.prompt, profile, terms, segment]),
   );
 }
 
@@ -88,13 +94,22 @@ async function requireProvider(): Promise<ProviderConfig> {
 export async function translateSegments(segments: string[], page: PageContext): Promise<TranslateResult> {
   const [settings, provider] = await Promise.all([getSettings(), requireProvider()]);
   const glossary = parseGlossary(settings.glossary);
-  const keys = await Promise.all(segments.map((s) => cacheKey(provider, settings, s, glossary)));
+  // 档案计入缓存键：换了风格，旧译文不会被误用（通用档案沿用 'general'）
+  const profile = page.profile ?? 'general';
+  const keys = await Promise.all(segments.map((s) => cacheKey(provider, settings, s, glossary, profile)));
   const cached = await cache.getMany(keys);
   const translations = keys.map((k) => cached.get(k) ?? null);
   const missing = translations.flatMap((t, i) => (t === null ? [i] : []));
   if (missing.length === 0) return { translations };
 
-  const prompt = { targetLang: settings.targetLang, stylePrompt: provider.prompt, title: page.title, summary: page.summary, subtitles: page.subtitles };
+  const prompt = {
+    targetLang: settings.targetLang,
+    stylePrompt: provider.prompt,
+    profile,
+    title: page.title,
+    summary: page.summary,
+    subtitles: page.subtitles,
+  };
   const outcome = await translateBatch(
     missing.map((i) => segments[i]!),
     // 术语按实际发送的这一批匹配（补翻拆分后的小批次也只带自己用到的术语）
