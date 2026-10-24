@@ -167,6 +167,9 @@
 - PDF 内嵌的多是子集字体，只含原文用到的字形。用原字体写译文里的英文时，缺的字母会回退到别的字体，一个词里混两种字形（「Jia」是黑体、「wei」是原字体）。要记录每个字体实际画过的字符，整词都有才用原字体，否则整词换成相近的系统字体。
 - pdf.js 给字体的通用字体族（`serif` / `sans-serif`）来自 PDF 的字体标志，pdfTeX 常常不设衬线标志，Times 会被标成无衬线。选中文字体（宋体 / 黑体）要按原字体名判断。粗体同理：pdf.js 认不出 NimbusRomNo9L-Medi 是粗体。
 - 单独送去翻译的作者姓名会被模型音译（论文风格下还加括注），prompt 约束不可靠，要在版面分析里识别出来直接保留（D53）。
+- 中文字体族名因平台而异：Windows 上的 Noto 是 `Noto Serif SC` / `Noto Sans SC`，Linux 发行版常见 `Noto Serif CJK SC`，字体栈两种都要写。可用 PowerShell `System.Drawing.Text.PrivateFontCollection` 读字体文件的族名核对。
+- `queryLocalFonts()`（Local Font Access）在扩展页面可用，返回的族名是英文（`Microsoft YaHei`、`SimSun`），canvas 直接可用。未授权时不报错，返回空数组；授权状态用 `navigator.permissions.query({ name: 'local-fonts' })` 查。浏览器第一次枚举字体要约 3 秒，之后几十毫秒。
+- Playwright 给扩展页授权 `local-fonts` 不能带 `origin`（报「opaque origins」），要用不带 origin 的 `context.grantPermissions(['local-fonts'])`。
 - 调试版面分析：Node 24 能直接运行 TypeScript，`src/lib/pdf/layout.ts` 没有依赖，可以配合 `pdfjs-dist/legacy/build/pdf.mjs` 在 Node 里对真实 PDF 打印分块结果，不用开浏览器。
 - E2E 的测试 PDF 由 `tests/e2e/fixtures/sample-pdf.ts` 运行时生成（标准 14 字体，手算 xref 偏移），不往仓库放二进制。无头 Chromium 没有自带 PDF 阅读器，测弹窗按钮用一个地址以 `.pdf` 结尾的普通网页。
 
