@@ -159,6 +159,30 @@ test('真实模型：划词翻译，单词给出词典式释义，句子给出�
   await page.close();
 });
 
+test('真实模型：带条件的术语按语境判断（Apple 指公司时保留，指水果时照常翻译）', async () => {
+  test.setTimeout(120_000);
+  await sw.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({ settings: { ...(settings as object), glossary: 'Apple（指公司时）' } });
+  });
+  const page = await context.newPage();
+  await page.goto(`${server.url}/apple.html`);
+  await toggle(page);
+  await expect(translation(page, '#company')).toHaveText(CJK, { timeout: 60_000 });
+  await expect(translation(page, '#fruit')).toHaveText(CJK, { timeout: 60_000 });
+  const company = (await translation(page, '#company').textContent()) ?? '';
+  const fruit = (await translation(page, '#fruit').textContent()) ?? '';
+  console.log('公司句：', company, '｜水果句：', fruit);
+  expect(company).toContain('Apple');
+  expect(fruit).toContain('苹果');
+  expect(fruit).not.toContain('Apple');
+  await sw.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({ settings: { ...(settings as object), glossary: '' } });
+  });
+  await page.close();
+});
+
 test('真实模型：遵守术语表（故意指定不常见译法）', async () => {
   test.setTimeout(120_000);
   await sw.evaluate(async () => {

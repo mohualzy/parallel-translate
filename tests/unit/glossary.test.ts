@@ -12,6 +12,24 @@ describe('parseGlossary', () => {
   });
 });
 
+describe('带条件的条目', () => {
+  it('译法末尾的括号说明解析为适用条件（全角、半角都可）；只写原文加条件时译法为原文', () => {
+    expect(parseGlossary('Apple = Apple（指公司时）\nMeta = Meta (when it means the company)\nAmazon（指公司时）')).toEqual([
+      { source: 'Apple', target: 'Apple', condition: '指公司时' },
+      { source: 'Meta', target: 'Meta', condition: 'when it means the company' },
+      { source: 'Amazon', target: 'Amazon', condition: '指公司时' },
+    ]);
+  });
+
+  it('注入 prompt 时附带条件，并说明不满足时正常翻译', () => {
+    const [system] = buildMessages(['I ate an apple.'], {
+      targetLang: 'zh-CN',
+      glossary: [{ source: 'Apple', target: 'Apple', condition: '指公司时' }],
+    });
+    expect(system?.content).toContain('- Apple → Apple（仅当指公司时；否则按语境正常翻译）');
+  });
+});
+
 describe('matchGlossary', () => {
   const entries = parseGlossary('cat = 猫\nC++ = C++\n机器学习 = ML\nopen source = 开源');
 

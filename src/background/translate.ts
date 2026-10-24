@@ -80,7 +80,7 @@ function cacheKey(
   glossary: GlossaryEntry[],
   profile: string,
 ): Promise<string> {
-  const terms = matchGlossary(glossary, [segment]).map((e) => [e.source, e.target]);
+  const terms = matchGlossary(glossary, [segment]).map((e) => (e.condition ? [e.source, e.target, e.condition] : [e.source, e.target]));
   return cache.sha256(
     JSON.stringify([provider.baseURL, provider.model, settings.targetLang, PROMPT_VERSION, provider.prompt, profile, terms, segment]),
   );
@@ -154,7 +154,7 @@ export async function translateText(req: TextRequest, onDelta: (delta: string) =
       TEXT_PROMPT_VERSION,
       req.profile,
       provider.prompt,
-      glossary.map((e) => [e.source, e.target]),
+      glossary.map((e) => (e.condition ? [e.source, e.target, e.condition] : [e.source, e.target])),
       req.text,
     ]),
   );
@@ -200,7 +200,7 @@ export async function translateSelection(
       provider.model,
       settings.targetLang,
       SELECTION_PROMPT_VERSION,
-      glossary.map((e) => [e.source, e.target]),
+      glossary.map((e) => (e.condition ? [e.source, e.target, e.condition] : [e.source, e.target])),
       req.word,
       req.context,
       req.text,

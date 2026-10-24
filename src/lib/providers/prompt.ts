@@ -42,10 +42,17 @@ export interface PromptOptions {
 /** 术语表段落，追加在 system prompt 末尾；没有命中术语时为空 */
 export function glossarySection(entries: GlossaryEntry[] | undefined, zh: boolean): string {
   if (!entries?.length) return '';
-  const lines = entries.map((e) => `- ${e.source} → ${e.target}`).join('\n');
+  const lines = entries
+    .map((e) => {
+      if (!e.condition) return `- ${e.source} → ${e.target}`;
+      return zh
+        ? `- ${e.source} → ${e.target}（仅当${e.condition}；否则按语境正常翻译）`
+        : `- ${e.source} → ${e.target} (only ${e.condition}; otherwise translate normally by context)`;
+    })
+    .join('\n');
   return zh
-    ? `\n\n术语表（原文 → 必须使用的译法；译法与原文相同表示保持原文不译）：\n${lines}`
-    : `\n\nGlossary (source → required translation; identical means keep it untranslated):\n${lines}`;
+    ? `\n\n术语表（原文 → 必须使用的译法；译法与原文相同表示保持原文不译；带条件的条目先根据上下文判断是否适用）：\n${lines}`
+    : `\n\nGlossary (source → required translation; identical means keep it untranslated; for entries with a condition, first decide from context whether it applies):\n${lines}`;
 }
 
 function englishSystemPrompt(to: string, style: string): string {

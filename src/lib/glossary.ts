@@ -5,7 +5,15 @@
 export interface GlossaryEntry {
   source: string;
   target: string;
+  /**
+   * 适用条件（可选）：写成 `Apple = Apple（指公司时）`。有条件的条目由模型按语境判断，
+   * 不满足条件时正常翻译；没有条件的条目是硬规则（见 DECISIONS D49）。
+   */
+  condition?: string;
 }
+
+/** 译法末尾的括号说明是适用条件：`Apple（指公司时）`、`Apple (when it means the company)` */
+const RE_CONDITION = /^(.*?)\s*[（(]([^（）()]+)[）)]$/;
 
 export function parseGlossary(text: string): GlossaryEntry[] {
   const entries: GlossaryEntry[] = [];
@@ -14,12 +22,27 @@ export function parseGlossary(text: string): GlossaryEntry[] {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
     const at = line.indexOf('=');
+    // 只写原文加条件（`Amazon（指公司时）`）：保持原文不译，但仅在条件满足时
+    const bare = at === -1 ? RE_CONDITION.exec(line) : null;
+    if (bare) {
+      const source = bare[1]!.trim();
+      if (!source || seen.has(source.toLowerCase())) continue;
+      seen.add(source.toLowerCase());
+      entries.push({ source, target: source, condition: bare[2]!.trim() });
+      continue;
+    }
     const source = (at === -1 ? line : line.slice(0, at)).trim();
-    const target = (at === -1 ? source : line.slice(at + 1).trim()) || source;
+    let target = (at === -1 ? source : line.slice(at + 1).trim()) || source;
     const key = source.toLowerCase();
     if (!source || seen.has(key)) continue;
     seen.add(key);
-    entries.push({ source, target });
+    const cond = RE_CONDITION.exec(target);
+    if (cond) {
+      target = cond[1]!.trim() || source;
+      entries.push({ source, target, condition: cond[2]!.trim() });
+    } else {
+      entries.push({ source, target });
+    }
   }
   return entries;
 }
