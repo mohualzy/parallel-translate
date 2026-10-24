@@ -172,6 +172,7 @@
 - 透明文字层的选区按 DOM 顺序扩展：块的顺序必须是阅读顺序（先左栏后右栏），按纵坐标排会在两栏间交错，拖选左栏会带上右栏。用 Playwright 的 `page.mouse` 做真实拖选能复现；连续测多次时每次先清空选区，否则起点落在旧选区上会变成拖动已选文字。
 - 透明文字层块末尾的 `<br>` 不能 `display: none`：复制时按渲染结果序列化，隐藏的 `<br>` 也被跳过，段落就连在一起了。块容器设 `height: 0`，免得 `<br>` 撑出的行挡住页面顶部。
 - 后台标签页（`document.visibilityState === 'hidden'`）不跑渲染流程，IntersectionObserver 不触发，阅读器不会渲染页面；用 CDP 在后台标签页实测时，要反复截图推动渲染。
+- 行内分数线、根号横线是底图（去字形后的画布）上的矢量线，不在文字层里；搬公式原子要连同底图上该区域一起搬（D58）。CMEX 的根号字形从基线往下挂，估原子上下范围时要单独处理，横线和根号顶端齐平。
 - 中文字体族名因平台而异：Windows 上的 Noto 是 `Noto Serif SC` / `Noto Sans SC`，Linux 发行版常见 `Noto Serif CJK SC`，字体栈两种都要写。可用 PowerShell `System.Drawing.Text.PrivateFontCollection` 读字体文件的族名核对。
 - `queryLocalFonts()`（Local Font Access）在扩展页面可用，返回的族名是英文（`Microsoft YaHei`、`SimSun`），canvas 直接可用。未授权时不报错，返回空数组；授权状态用 `navigator.permissions.query({ name: 'local-fonts' })` 查。浏览器第一次枚举字体要约 3 秒，之后几十毫秒。
 - Playwright 给扩展页授权 `local-fonts` 不能带 `origin`（报「opaque origins」），要用不带 origin 的 `context.grantPermissions(['local-fonts'])`。
