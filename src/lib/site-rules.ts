@@ -46,6 +46,23 @@ export const SITE_RULES: SiteRule[] = [
       '[data-testid="blob-size"]',
     ],
   },
+  {
+    // 双语对照下通用识别已经干净（推文、简介、标题）；问题在仅译文模式：短文字照翻，
+    // 用户名被意译（「Python Software Foundation」→「Python 软件基金会」，「Bball Paul」→「篮球保罗」）
+    id: 'x',
+    hosts: ['x.com', 'twitter.com'],
+    exclude: [
+      // 推文作者、个人主页头部的显示名与 @账号
+      '[data-testid="User-Name"]',
+      '[data-testid="UserName"]',
+      // 推荐关注等用户卡片里的名字与 @账号（简介不在链接里，照常翻译）
+      '[data-testid="UserCell"] a[role="link"]',
+      // 趋势：大多是人名、话题标签
+      '[data-testid="trend"]',
+      // 浏览量（数字与「Views」分属两段，仅译文模式下会显示成「38.2K Views浏览量」）
+      'a[href$="/analytics"]',
+    ],
+  },
 ];
 
 /** 当前网站适用的规则；同一网站只取第一条 */

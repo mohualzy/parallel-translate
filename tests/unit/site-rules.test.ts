@@ -5,6 +5,8 @@ describe('findSiteRule', () => {
   it('按主机名匹配，含子域名；没有规则的网站返回 undefined', () => {
     expect(findSiteRule('news.ycombinator.com')?.id).toBe('hacker-news');
     expect(findSiteRule('github.com')?.id).toBe('github');
+    expect(findSiteRule('x.com')?.id).toBe('x');
+    expect(findSiteRule('mobile.twitter.com')?.id).toBe('x');
     expect(findSiteRule('example.com')).toBeUndefined();
   });
 
