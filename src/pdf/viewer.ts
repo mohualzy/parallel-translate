@@ -233,7 +233,7 @@ export class PdfViewer {
       const t = this.translations.get(b.text);
       if (t !== undefined) map.set(b, t);
     }
-    drawTranslatedPage(r.translated, r.background, r.glyphs, r.blocks, map, this.coverage);
+    drawTranslatedPage(r.translated, r.background, r.glyphs, r.blocks, map, this.coverage, this.settings.pdfCjkFont);
     // 译文画在 canvas 上，DOM 里读不到；把已翻译的段落数写在页面元素上，便于测试与排查
     page.el.dataset.translated = String(map.size);
   }
@@ -257,6 +257,13 @@ export class PdfViewer {
       p.failed = 0;
     }
     this.layoutPages();
+  }
+
+  /** 换译文中文字体：只用已有译文重画已渲染的页，不重新渲染 PDF、不重新请求翻译 */
+  setCjkFont(font: string) {
+    if (font === this.settings.pdfCjkFont) return;
+    this.settings = { ...this.settings, pdfCjkFont: font };
+    for (const page of this.pages) this.redraw(page);
   }
 
   setMode(mode: ViewMode) {

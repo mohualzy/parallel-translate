@@ -48,6 +48,8 @@ export interface Settings {
   extractTerms: boolean;
   /** 用户术语表原文：每行 `原文 = 译法`（见 lib/glossary.ts） */
   glossary: string;
+  /** PDF 译文的中文字体：空为自动，@song 等为预设，其他是字体族名（lib/pdf/fonts.ts） */
+  pdfCjkFont: string;
   batchMaxChars: number;
   batchMaxSegments: number;
 }
@@ -95,6 +97,7 @@ export const DEFAULT_SETTINGS: Settings = {
   excludeSelectors: [],
   extractTerms: true,
   glossary: '',
+  pdfCjkFont: '',
   batchMaxChars: 2000,
   batchMaxSegments: 12,
 };

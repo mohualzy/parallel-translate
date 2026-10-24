@@ -1199,6 +1199,46 @@ test('PDF 阅读器：渲染原文页与译文页；正文按段翻译（跨行�
   await page.close();
 });
 
+test('PDF 阅读器：切换译文中文字体只重画、不重新请求翻译；手动输入的字体名保存到设置，刷新后仍选中；已授权时列出本机中文字体', async () => {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/pdf.html?file=${encodeURIComponent(`${server.url}/sample.pdf`)}`);
+  const first = page.locator('.page[data-page="1"]');
+  await expect(first).toHaveAttribute('data-translated', /[1-9]/);
+  await expect(page.locator('#progress')).toContainText('已翻译 2 / 2 页');
+  const requests = server.batches.length;
+  const pixels = () =>
+    first.locator('canvas.translated').evaluate((c: HTMLCanvasElement) => {
+      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+      let h = 0;
+      for (let i = 0; i < d.length; i += 4) h = (h * 31 + d[i]!) | 0;
+      return h;
+    });
+  const auto = await pixels();
+  const font = page.locator('#cjk-font');
+  await expect(font).toHaveValue('');
+
+  await font.selectOption('@hei');
+  await expect.poll(pixels).not.toBe(auto);
+  expect(server.batches.length).toBe(requests);
+
+  page.once('dialog', (d) => void d.accept('SimHei'));
+  await font.selectOption('#custom');
+  await expect(font).toHaveValue('SimHei');
+  await expect.poll(() => sw.evaluate(async () => ((await chrome.storage.local.get('settings')).settings as { pdfCjkFont: string }).pdfCjkFont)).toBe('SimHei');
+
+  // 已授权读取本机字体时，打开阅读器就列出能显示中文的字体，纯西文字体不在列表里
+  await context.grantPermissions(['local-fonts']);
+  await page.reload();
+  await expect(page.locator('#cjk-font')).toHaveValue('SimHei');
+  const installed = page.locator('#cjk-font optgroup[label="本机字体"] option');
+  await expect.poll(() => installed.count(), { timeout: 15_000 }).toBeGreaterThan(1);
+  expect(await installed.allTextContents()).not.toContain('Arial');
+  await expect(page.locator('#cjk-font option[value="#load"]')).toHaveCount(0);
+  await page.locator('#cjk-font').selectOption('');
+  await expect.poll(() => sw.evaluate(async () => ((await chrome.storage.local.get('settings')).settings as { pdfCjkFont: string }).pdfCjkFont)).toBe('');
+  await page.close();
+});
+
 test('PDF 阅读器：弹窗在 PDF 页面上显示「用双语阅读器打开此 PDF」，点击后本标签页换成阅读器', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/fake.pdf`);

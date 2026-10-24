@@ -1,14 +1,11 @@
 import { sameFont } from '@/lib/pdf/color';
+import { cjkStack } from '@/lib/pdf/fonts';
 import { BOLD_FONT, ITALIC_FONT, SANS_FONT, type PdfBlock, type PdfTextItem } from '@/lib/pdf/layout';
 import { flowLayout, tokenize, tokenWidth, type FlowBox, type Measure, type Move, type Placement, type Token } from '@/lib/pdf/typeset';
 import type { Glyph } from './page-render';
 
 /** 译文的行高（字号的倍数） */
 const LINE_HEIGHT = 1.32;
-const CJK_SERIF = '"Songti SC","Noto Serif CJK SC","Source Han Serif SC","SimSun",serif';
-const CJK_SANS = '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",sans-serif';
-/** 原文斜体处的中文用楷体（中文排版里强调、引文的习惯写法） */
-const CJK_KAI = '"Kaiti SC","STKaiti","KaiTi","楷体",serif';
 /** PDF 子集字体缺字时，译文里的英文改用的系统字体 */
 const LATIN_SERIF = '"Times New Roman",Times,"Nimbus Roman","Liberation Serif"';
 const LATIN_SANS = 'Arial,Helvetica,"Liberation Sans"';
@@ -146,7 +143,7 @@ interface Job {
   fill: string;
 }
 
-function makeJob(block: PdfBlock, translation: string, plain: Glyph[], coverage: FontCoverage): Job {
+function makeJob(block: PdfBlock, translation: string, plain: Glyph[], coverage: FontCoverage, cjkFont: string): Job {
   const items = block.lines.flatMap((l) => l.items);
   const own = new Set(items.flatMap((i) => glyphsOf(i, plain)));
   // 空白字形不算进原子：带前导空格的文本项会把原子的左边界拉远，写回时多出一段空
@@ -166,7 +163,7 @@ function makeJob(block: PdfBlock, translation: string, plain: Glyph[], coverage:
     const italic = m ? m.italic : style.italic;
     const weight = bold ? 700 : 400;
     // 中文没有真正的斜体，按中文排版习惯用楷体表示（浏览器合成的斜体中文很难看）
-    const cjk = italic ? CJK_KAI : style.sans ? CJK_SANS : CJK_SERIF;
+    const cjk = cjkStack(cjkFont, { sans: style.sans, italic });
     if (CJK_CHAR.test(text)) return `${weight} ${size}px ${cjk}`;
     // PDF 的字体多是子集，只有原文用过的字母；缺字时整词换成相近的系统字体，避免一个词里混两种字形
     const family = (m?.fontId !== undefined ? familyById.get(m.fontId) : undefined) ?? style.own;
@@ -219,6 +216,7 @@ const SLOT_PAD = 3;
  * → 把夹在译文之间的公式区域整体平移 → 写译文。
  * translations 里没有的块（还没翻译、不翻译、翻译失败）都按原样显示。
  * 同一栏相邻的译文块连成串依次排布（flowLayout），段距一致，省下的空间留在串末。
+ * cjkFont 是设置里的译文中文字体（lib/pdf/fonts.ts），空字符串为自动。
  */
 export function drawTranslatedPage(
   target: HTMLCanvasElement,
@@ -227,6 +225,7 @@ export function drawTranslatedPage(
   blocks: PdfBlock[],
   translations: Map<PdfBlock, string>,
   coverage: FontCoverage,
+  cjkFont: string,
 ): void {
   const ctx = target.getContext('2d')!;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -238,7 +237,7 @@ export function drawTranslatedPage(
       const t = translations.get(b);
       return t !== undefined && !b.keep && !isUnchanged(b, t);
     })
-    .map((block) => makeJob(block, translations.get(block)!, plain, coverage));
+    .map((block) => makeJob(block, translations.get(block)!, plain, coverage, cjkFont));
   const translated = new Set(jobs.map((j) => j.block));
   // 公式区域能整体平移的条件：四周是纯色底（看不含文字的底图），没有图片、线条跨过边界；
   // 两段直接相连时，中间的空隙要什么都没有（脚注分隔线、图片会截断）

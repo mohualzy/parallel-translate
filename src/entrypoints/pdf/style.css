@@ -131,3 +131,7 @@ body.dragging .pages {
   outline: 3px dashed var(--accent);
   outline-offset: -8px;
 }
+
+#cjk-font {
+  max-width: 200px;
+}
