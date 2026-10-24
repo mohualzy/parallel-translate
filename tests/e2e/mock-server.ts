@@ -20,6 +20,8 @@ export interface MockServer {
   selections: { text: string; word: boolean; context: string }[];
   /** 输入框翻译请求的原文 */
   inputs: string[];
+  /** 侧栏文本翻译请求：原文与 system prompt */
+  texts: { text: string; system: string }[];
   /** 大于 0 时每个请求先等这么久再响应（模拟慢模型） */
   delayMs: number;
   /** 术语抽取请求收到的正文，以及要返回的术语行（`原文 = 译法`） */
@@ -82,7 +84,7 @@ function extractSegments(content: string): string[] {
 }
 
 export async function startMockServer(): Promise<MockServer> {
-  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], systems: [], users: [], selections: [], inputs: [], delayMs: 0, extractions: [], termsOutput: '', failWith: null, echoWhen: null, dropWhen: null };
+  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], systems: [], users: [], selections: [], inputs: [], texts: [], delayMs: 0, extractions: [], termsOutput: '', failWith: null, echoWhen: null, dropWhen: null };
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -143,6 +145,8 @@ export async function startMockServer(): Promise<MockServer> {
       // 输入框翻译与划词一样用 <text>，按 system prompt 区分
       if (selected !== undefined && /message the user wrote|用户写的消息/.test(system)) {
         state.inputs.push(selected);
+      } else if (selected !== undefined && /Preserve paragraphs|保留原文的段落/.test(system)) {
+        state.texts.push({ text: selected, system });
       } else if (selected !== undefined) {
         state.selections.push({
           text: selected,

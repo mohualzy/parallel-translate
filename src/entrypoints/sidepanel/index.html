@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>文本翻译</title>
+  </head>
+  <body>
+    <header class="header">
+      <img src="/icon/32.png" alt="" width="20" height="20" />
+      <strong>文本翻译</strong>
+    </header>
+
+    <main>
+      <div class="options">
+        <label class="field">
+          <span>翻译服务</span>
+          <select id="provider"></select>
+        </label>
+        <label class="field">
+          <span>风格</span>
+          <select id="profile"></select>
+        </label>
+        <label class="field">
+          <span>译成</span>
+          <select id="target"></select>
+        </label>
+      </div>
+
+      <textarea id="source" rows="8" placeholder="粘贴或输入要翻译的文字，Ctrl+Enter 翻译"></textarea>
+      <div class="actions">
+        <button id="translate" class="btn btn-primary" type="button">翻译</button>
+        <span class="muted hint">Ctrl+Enter</span>
+        <button id="clear" class="btn" type="button">清空</button>
+      </div>
+
+      <section id="result-box" class="result-box" hidden>
+        <div class="result-head">
+          <span id="direction" class="muted"></span>
+          <button id="copy" class="btn" type="button">复制</button>
+        </div>
+        <div id="result" class="result" data-state="idle"></div>
+      </section>
+      <p id="error" class="error" hidden></p>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

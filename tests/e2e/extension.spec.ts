@@ -1081,6 +1081,42 @@ test('文章术语：短页面不抽取；关闭开关后不抽取', async () =>
   await page.close();
 });
 
+test('侧栏：外文译成目标语言、中文自动译成英文，流式显示；风格切换随请求生效', async () => {
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  const source = panel.locator('#source');
+  const result = panel.locator('#result');
+
+  await source.fill('The agent is ready.\n\nSecond paragraph.');
+  await expect(panel.locator('#target option[value="auto"]')).toHaveText('自动（→ 简体中文）');
+  await source.press('Control+Enter');
+  await expect(result).toHaveAttribute('data-state', 'done');
+  await expect(result).toHaveText('【译】The agent is ready.\n\nSecond paragraph.');
+  await expect(panel.locator('#direction')).toHaveText('译成 简体中文');
+  expect(server.texts.at(-1)!.system).toContain('简体中文母语译者');
+
+  await source.fill('你好，明天见。');
+  await expect(panel.locator('#target option[value="auto"]')).toHaveText('自动（→ English）');
+  await panel.locator('#profile').selectOption('tech');
+  await panel.locator('#translate').click();
+  await expect(result).toHaveText('【译】你好，明天见。');
+  expect(server.texts.at(-1)!.system).toContain('native English translator');
+  expect(server.texts.at(-1)!.system).toContain('technical documentation');
+  await panel.close();
+});
+
+test('侧栏：右键菜单经 storage.session 交来的文字自动填入并翻译（侧栏已打开时也生效）', async () => {
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  await expect(panel.locator('#source')).toBeFocused();
+  await sw.evaluate(() => chrome.storage.session.set({ sidePanelPendingText: 'Pending text from the context menu.' }));
+  await expect(panel.locator('#source')).toHaveValue('Pending text from the context menu.');
+  await expect(panel.locator('#result')).toHaveText('【译】Pending text from the context menu.');
+  // 取走后清除，下次打开侧栏不会重复翻译
+  expect(await sw.evaluate(() => chrome.storage.session.get('sidePanelPendingText'))).toEqual({});
+  await panel.close();
+});
+
 test('设置页：显示已配置服务，测试连接与获取模型列表可用', async () => {
   const page = await context.newPage();
   const errors: string[] = [];

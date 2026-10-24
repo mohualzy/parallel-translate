@@ -3,6 +3,7 @@ import './style.css';
 import { browser } from 'wxt/browser';
 import { sendToTab, type TabState } from '@/lib/messages';
 import { getProfile, PROFILES } from '@/lib/profiles';
+import { openSidePanel } from '@/lib/side-panel';
 import { getProviders, getSettings, saveSettings, type DisplayMode, type Settings } from '@/lib/settings';
 import { $, fillSelect, languageOptions, styleOptions } from '@/ui/labels';
 
@@ -14,6 +15,7 @@ const statusEl = $('#status');
 const noticeEl = $('#notice');
 
 let tabId: number | undefined;
+let windowId: number | undefined;
 let host = '';
 
 /** 本文术语：AI 抽取的术语和译法，让用户知道为什么某个词这样译（不对就写进术语表纠正） */
@@ -78,6 +80,7 @@ async function updateSiteList(key: 'alwaysTranslateSites' | 'neverTranslateSites
 async function init() {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   tabId = tab?.id;
+  windowId = tab?.windowId;
   try {
     host = tab?.url ? new URL(tab.url).hostname : '';
   } catch {
@@ -160,11 +163,17 @@ async function init() {
     renderState(await sendToTab(tabId, { type: 'retry-failed' }).catch(() => undefined));
   });
   $('#open-options').addEventListener('click', () => browser.runtime.openOptionsPage());
+  // 同步调用以保住用户手势（见 lib/side-panel.ts），打开后关掉弹窗
+  $('#open-side-panel').addEventListener('click', () => {
+    void openSidePanel(windowId).then(() => window.close(), () => undefined);
+  });
   $('#shortcuts').addEventListener('click', () => browser.tabs.create({ url: 'chrome://extensions/shortcuts' }));
 
   const commands = await browser.commands.getAll();
   const key = (name: string) => commands.find((c) => c.name === name)?.shortcut || '未设置';
   $('#shortcut-hint').textContent = `翻译 ${key('toggle-translate')} · 整页 ${key('translate-whole-page')}`;
+  const sideKey = commands.find((c) => c.name === 'open-side-panel')?.shortcut;
+  if (sideKey) $('#open-side-panel').textContent = `在侧栏翻译文本（${sideKey}）`;
 
   renderState(await queryState());
   // 弹窗打开期间刷新进度

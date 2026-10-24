@@ -39,6 +39,11 @@ export default defineConfig({
         suggested_key: { default: 'Alt+I' },
         description: '翻译当前输入框',
       },
+      // Alt+S 打开侧栏（文本翻译）
+      'open-side-panel': {
+        suggested_key: { default: 'Alt+S' },
+        description: '打开侧栏（文本翻译）',
+      },
       // 以下不设默认按键，避免与网页或其他扩展冲突，可在 chrome://extensions/shortcuts 自行绑定
       'toggle-display-mode': {
         description: '切换双语对照 / 仅译文',

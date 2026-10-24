@@ -8,14 +8,17 @@ import {
   buildInputMessages,
   buildSelectionMessages,
   buildTermsMessages,
+  buildTextMessages,
   cleanInputOutput,
   INPUT_PROMPT_VERSION,
   parseTerms,
   TERMS_PROMPT_VERSION,
+  TEXT_PROMPT_VERSION,
   SELECTION_PROMPT_VERSION,
   stripReasoning,
 } from '@/lib/providers/prompt';
-import { getActiveProvider, getSettings, type ProviderConfig, type Settings } from '@/lib/settings';
+import { getActiveProvider, getProviders, getSettings, type ProviderConfig, type Settings } from '@/lib/settings';
+import type { TextRequest } from '@/lib/text-translate';
 import * as cache from './cache';
 
 /** 一批里有段缺失时，补翻最多额外请求的次数（见 docs/DECISIONS.md D14） */
@@ -132,6 +135,51 @@ export async function translateSegments(segments: string[], page: PageContext): 
   });
   await cache.setMany(fresh).catch(() => undefined); // 缓存写失败不影响本次翻译
   return { translations, error: outcome.error };
+}
+
+/**
+ * 侧栏文本翻译：和划词一样单次流式请求、不排队、不重试；可以临时指定服务，不改全局设置。
+ */
+export async function translateText(req: TextRequest, onDelta: (delta: string) => void, signal: AbortSignal): Promise<string> {
+  const settings = await getSettings();
+  const provider = (req.providerId && (await getProviders()).find((p) => p.id === req.providerId)) || (await requireProvider());
+  if (!provider.model) throw new Error(`翻译服务「${provider.name}」还没填写模型名`);
+  const glossary = matchGlossary(parseGlossary(settings.glossary), [req.text]);
+  const key = await cache.sha256(
+    JSON.stringify([
+      'text',
+      provider.baseURL,
+      provider.model,
+      req.targetLang,
+      TEXT_PROMPT_VERSION,
+      req.profile,
+      provider.prompt,
+      glossary.map((e) => [e.source, e.target]),
+      req.text,
+    ]),
+  );
+  const hit = (await cache.getMany([key])).get(key);
+  if (hit !== undefined) {
+    onDelta(hit);
+    return hit;
+  }
+  const messages = buildTextMessages(req.text, {
+    targetLang: req.targetLang,
+    profile: req.profile,
+    stylePrompt: provider.prompt,
+    glossary,
+  });
+  try {
+    const raw = await keepAlive(() =>
+      createClient(provider).complete(messages, AbortSignal.any([signal, AbortSignal.timeout(provider.timeoutMs)]), onDelta),
+    );
+    const text = cleanInputOutput(raw);
+    if (!text) throw new Error('模型返回了空内容');
+    await cache.setMany([[key, text]]).catch(() => undefined);
+    return text;
+  } catch (err) {
+    throw new Error(describeError(err, provider));
+  }
 }
 
 /**

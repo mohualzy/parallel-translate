@@ -257,6 +257,33 @@ test('真实模型：长文抽取出可解析的术语，同一术语在全文�
   await page.close();
 });
 
+test('真实模型：侧栏多段文本译成中文，保留段落与列表；中文自动译成英文', async () => {
+  test.setTimeout(120_000);
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  const result = panel.locator('#result');
+  await panel.locator('#source').fill(
+    'Release notes for version 2.0.\n\nWhat changed:\n- Faster startup\n- A new settings page\n\nThanks to everyone who reported bugs.',
+  );
+  await panel.locator('#translate').click();
+  await expect(result).toHaveAttribute('data-state', 'done', { timeout: 60_000 });
+  const zh = (await result.textContent()) ?? '';
+  console.log('侧栏译文：', JSON.stringify(zh));
+  expect(zh).toMatch(CJK);
+  expect(zh).toContain('\n\n');
+  expect(zh).toMatch(/^- /m);
+  expect(zh).not.toMatch(/<\/?text>/);
+
+  await panel.locator('#source').fill('这个版本启动更快了，感谢大家反馈问题。');
+  await panel.locator('#translate').click();
+  await expect(result).toHaveAttribute('data-state', 'done', { timeout: 60_000 });
+  const en = (await result.textContent()) ?? '';
+  console.log('侧栏英文：', JSON.stringify(en));
+  expect(en).not.toMatch(CJK);
+  expect(en).toMatch(/faster|startup|thank/i);
+  await panel.close();
+});
+
 test('真实模型：设置页测试连接成功', async () => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/options.html`);
