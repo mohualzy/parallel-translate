@@ -5,6 +5,7 @@ import { getProfile, PROFILES } from '@/lib/profiles';
 import { getSettings, onSettingsChanged, saveSettings } from '@/lib/settings';
 import { setupFindBar } from '@/pdf/find-bar';
 import { setupHighlightBar } from '@/pdf/highlight-bar';
+import { setupHighlightPanel } from '@/pdf/highlight-panel';
 import { listCjkFonts, localFontsGranted, localFontsSupported } from '@/pdf/local-fonts';
 import { fetchPdf, openPdf } from '@/pdf/loader';
 import { PdfViewer, type ViewMode } from '@/pdf/viewer';
@@ -23,6 +24,19 @@ const profileSelect = $<HTMLSelectElement>('#profile');
 const fontSelect = $<HTMLSelectElement>('#cjk-font');
 let viewer: PdfViewer | undefined;
 const findBar = setupFindBar(() => viewer);
+/** 导出强调时的标题和来源（文件地址或本地文件名） */
+let docMeta = { title: '', from: '' };
+const highlightPanel = setupHighlightPanel($<HTMLButtonElement>('#hl-toggle'), () => {
+  const v = viewer;
+  return (
+    v && {
+      entries: () => v.highlightEntries(),
+      reveal: (id) => v.revealHighlight(id),
+      remove: (id) => void v.removeHighlight(id),
+      meta: () => docMeta,
+    }
+  );
+});
 /** 当前的译文中文字体（设置值）；本机字体列表读取后缓存 */
 let cjkFont = '';
 let localFonts: string[] | undefined;
@@ -44,7 +58,7 @@ function fileNameOf(url: string): string {
   }
 }
 
-async function load(data: ArrayBuffer, fallbackTitle: string) {
+async function load(data: ArrayBuffer, fallbackTitle: string, from = fallbackTitle) {
   notice.hidden = true;
   $('#empty').hidden = true;
   pages.replaceChildren();
@@ -53,6 +67,7 @@ async function load(data: ArrayBuffer, fallbackTitle: string) {
   const title = meta?.Title?.trim() || fallbackTitle;
   document.title = `${title} - PDF 双语阅读`;
   $('#doc-title').textContent = title;
+  docMeta = { title, from };
   viewer = new PdfViewer(doc, pages, title, {
     onProgress: (done, total, failed) => {
       progress.textContent = `已翻译 ${done} / ${total} 页${failed ? `，${failed} 段失败` : ''}`;
@@ -61,8 +76,13 @@ async function load(data: ArrayBuffer, fallbackTitle: string) {
     onError: showNotice,
     onNotice: showNotice,
   });
-  viewer.onTextChange = () => findBar.refresh();
+  viewer.onTextChange = () => {
+    findBar.refresh();
+    highlightPanel.refresh();
+  };
+  viewer.onHighlightsChange = () => highlightPanel.refresh();
   await viewer.init();
+  highlightPanel.refresh();
   // 打开文件期间可能换过字体，以下拉框为准
   viewer.setCjkFont(cjkFont);
   renderControls();
@@ -233,7 +253,7 @@ function init() {
   }
   progress.textContent = '正在打开…';
   fetchPdf(file)
-    .then((data) => load(data, fileNameOf(file)))
+    .then((data) => load(data, fileNameOf(file), file))
     .catch((err: unknown) => {
       progress.textContent = '';
       showNotice(err instanceof Error ? err.message : String(err));

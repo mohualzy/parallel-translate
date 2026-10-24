@@ -2,7 +2,7 @@ import { sameFont } from '@/lib/pdf/color';
 import { cjkStack } from '@/lib/pdf/fonts';
 import type { HighlightStyle } from '@/lib/pdf/highlights';
 import { BOLD_FONT, HANGING_FONT, ITALIC_FONT, SANS_FONT, type PdfAtom, type PdfBlock, type PdfTextItem } from '@/lib/pdf/layout';
-import { blockKeys, keptBlockText, rangeRects, readingOrder, type PageTextBlock, type TextPiece } from '@/lib/pdf/page-text';
+import { blockKeys, keptBlockText, plainSource, rangeRects, readingOrder, type PageTextBlock, type TextPiece } from '@/lib/pdf/page-text';
 import { flowLayout, tokenize, tokenWidth, type FlowBox, type Measure, type Move, type Placement, type Token } from '@/lib/pdf/typeset';
 import type { Glyph } from './page-render';
 
@@ -379,7 +379,7 @@ export function drawTranslatedPage(
   const keys = blockKeys(blocks);
   const pageText = blocks.map((b, i): PageTextBlock => {
     const own = pieces.get(b);
-    if (own) return { key: keys[i]!, text: textOf.get(b)!, pieces: own, translated: true };
+    if (own) return { key: keys[i]!, text: textOf.get(b)!, pieces: own, translated: true, source: plainSource(b) };
     // 保留原文的块落在整体平移的公式区域里时，跟着平移
     const m = moves.find((mv) => b.x0 >= mv.x0 - SLOT_PAD && b.x1 <= mv.x1 + SLOT_PAD && b.top >= mv.top - 1 && b.bottom <= mv.bottom + 1);
     return keptBlockText(b, keys[i]!, m?.dy ?? 0);

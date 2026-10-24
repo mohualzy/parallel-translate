@@ -57,6 +57,59 @@ export function removeRange(list: PdfHighlight[], r: TextRange, textOf: (page: n
   return out;
 }
 
+export const STYLE_LABELS: Record<HighlightStyle, string> = {
+  yellow: '黄',
+  green: '绿',
+  blue: '蓝',
+  pink: '粉',
+  underline: '下划线',
+};
+
+/** 导出用的一条强调：按阅读顺序排好；source 是所在段落的原文（这一页看过才有） */
+export interface HighlightEntry {
+  page: number;
+  key: string;
+  style: HighlightStyle;
+  quote: string;
+  source?: string;
+}
+
+const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+/**
+ * 导出 Markdown：按页分节，同一段里的强调列在一起，后面附该段原文作对照。
+ * 高亮写成 ==…==（Obsidian 等能直接显示），下划线写成 <u>…</u>，非黄色在后面注明颜色。
+ */
+export function highlightsMarkdown(title: string, from: string, entries: HighlightEntry[]): string {
+  const out = [`# ${oneLine(title)}：强调`, '', `来源：${from}`, ''];
+  let page = -1;
+  let key: string | undefined;
+  let source: string | undefined;
+  const flush = () => {
+    if (source && oneLine(source) !== '') out.push('', `  > 原文：${oneLine(source)}`);
+  };
+  for (const e of entries) {
+    if (e.page !== page) {
+      flush();
+      if (page !== -1) out.push('');
+      out.push(`## 第 ${e.page} 页`, '');
+      page = e.page;
+      key = undefined;
+    } else if (e.key !== key) flush();
+    if (e.key !== key) {
+      // 段落之间空一行；同一段的强调紧挨着
+      if (key !== undefined) out.push('');
+      key = e.key;
+      source = e.source;
+    }
+    const text = oneLine(e.quote);
+    const mark = e.style === 'underline' ? `<u>${text}</u>` : `==${text}==`;
+    out.push(`- ${mark}${e.style === 'yellow' || e.style === 'underline' ? '' : `（${STYLE_LABELS[e.style]}）`}`);
+  }
+  flush();
+  return `${out.join('\n')}\n`;
+}
+
 /** 添加强调：先切掉同一块里重叠的旧强调，新的覆盖在上面。首尾空白不算进强调 */
 export function addHighlight(
   list: PdfHighlight[],

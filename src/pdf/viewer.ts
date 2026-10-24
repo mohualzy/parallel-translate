@@ -1,6 +1,6 @@
 import type { GlossaryEntry } from '@/lib/glossary';
-import { addHighlight, locate, removeRange, type HighlightStyle, type PdfHighlight, type TextRange } from '@/lib/pdf/highlights';
-import type { PageTextBlock } from '@/lib/pdf/page-text';
+import { addHighlight, locate, removeRange, type HighlightEntry, type HighlightStyle, type PdfHighlight, type TextRange } from '@/lib/pdf/highlights';
+import { rangeRects, type PageTextBlock } from '@/lib/pdf/page-text';
 import { isProbablyInLanguage } from '@/lib/languages';
 import { sendToBackground, type PageContext } from '@/lib/messages';
 import { splitByColor } from '@/lib/pdf/color';
@@ -72,6 +72,8 @@ export class PdfViewer {
   private pageTexts = new Map<number, { blocks: PageTextBlock[]; width: number; height: number }>();
   /** 某页的文字重画了（译文到达、换字体、缩放）：查找栏据此刷新命中 */
   onTextChange?: (page: number) => void;
+  /** 强调增删了（工具栏计数、强调面板据此刷新） */
+  onHighlightsChange?: () => void;
   private docId = '';
   zoom = 1;
   mode: ViewMode = 'bilingual';
@@ -336,7 +338,51 @@ export class PdfViewer {
       this.highlights = style === undefined ? removeRange(this.highlights, r, this.textOf) : addHighlight(this.highlights, r, style, this.textOf);
     }
     for (const index of new Set(ranges.map((r) => r.page))) this.redraw(this.pages[index - 1]!);
+    this.onHighlightsChange?.();
     await saveHighlights(this.docId, this.highlights);
+  }
+
+  /** 删除一条强调（强调面板） */
+  async removeHighlight(id: string) {
+    const h = this.highlights.find((x) => x.id === id);
+    if (!h) return;
+    this.highlights = this.highlights.filter((x) => x.id !== id);
+    this.redraw(this.pages[h.page - 1]!);
+    this.onHighlightsChange?.();
+    await saveHighlights(this.docId, this.highlights);
+  }
+
+  /**
+   * 强调列表，按阅读顺序：页码、块在页内的顺序、块内位置。
+   * 这一页本次打开后看过才知道块的顺序和原文，没看过的页按保存时的偏移排、不带原文。
+   */
+  highlightEntries(): (HighlightEntry & { id: string })[] {
+    const placed = this.highlights.map((h) => {
+      const blocks = this.pageTexts.get(h.page)?.blocks;
+      const index = blocks?.findIndex((b) => b.key === h.key) ?? -1;
+      const block = index >= 0 ? blocks![index] : undefined;
+      const at = block ? locate(h, block.text) : undefined;
+      return { h, order: index >= 0 ? index : Infinity, start: at?.start ?? h.start, source: block?.translated ? block.source : undefined };
+    });
+    placed.sort((a, b) => a.h.page - b.h.page || a.order - b.order || a.start - b.start);
+    return placed.map(({ h, source }) => ({ id: h.id, page: h.page, key: h.key, style: h.style, quote: h.quote, source }));
+  }
+
+  /** 滚到某条强调：这一页看过就定位到那一行，否则滚到页首（滚到后会渲染、画出强调） */
+  revealHighlight(id: string) {
+    const h = this.highlights.find((x) => x.id === id);
+    const page = h && this.pages[h.page - 1];
+    if (!h || !page) return;
+    const geometry = this.pageTexts.get(h.page);
+    const block = geometry?.blocks.find((b) => b.key === h.key);
+    const at = block ? locate(h, block.text) : undefined;
+    const rect = block && at ? rangeRects(block, at.start, at.end)[0] : undefined;
+    if (!geometry || !rect) {
+      page.el.scrollIntoView({ block: 'start' });
+      return;
+    }
+    const box = page.translatedSlot.getBoundingClientRect();
+    window.scrollBy({ top: box.top + (rect.y / geometry.height) * box.height - window.innerHeight / 3 });
   }
 
   /** 换译文中文字体：只用已有译文重画已渲染的页，不重新渲染 PDF、不重新请求翻译 */

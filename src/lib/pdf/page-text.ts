@@ -22,6 +22,8 @@ export interface PageTextBlock {
   pieces: TextPiece[];
   /** 画的是译文（否则是保留的原文字形） */
   translated: boolean;
+  /** 块的原文（纯文本，公式用原字符）：导出强调时作对照 */
+  source: string;
 }
 
 /** 文字层的一行：显示文本里 [start, end) 这段（含行末被断行丢掉的空格），以及它在画布上的范围 */
@@ -76,7 +78,17 @@ export function keptBlockText(block: PdfBlock, key: string, dy = 0): PageTextBlo
       prev = { x1: it.x + it.w, size: it.size };
     }
   });
-  return { key, text, pieces, translated: false };
+  return { key, text, pieces, translated: false, source: text };
+}
+
+/** 块原文的纯文本：占位符换成公式原字符，去掉样式标签，反转义 */
+export function plainSource(block: PdfBlock): string {
+  return block.text
+    .replace(/<x(\d+)\s*\/>/g, (_, i: string) => block.atoms[Number(i)]?.items.map((it) => it.str).join('') ?? '')
+    .replace(/<\/?g\d+>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
 }
 
 /** 按行分组：每行取最大的字号和它的基线（上下标不改变行的位置） */

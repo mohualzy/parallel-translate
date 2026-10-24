@@ -1243,7 +1243,7 @@ test('PDF 阅读器：切换译文中文字体只重画、不重新请求翻译�
   await page.close();
 });
 
-test('PDF 阅读器：译文页文字可选中、复制；Ctrl+F 查找跨行的词；划词高亮保存在本机，刷新后仍在，可清除', async () => {
+test('PDF 阅读器：译文页文字可选中、复制；Ctrl+F 查找跨行的词；划词高亮保存在本机，刷新后仍在，可清除；强调面板列出、导出 Markdown、删除', async () => {
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -1321,6 +1321,26 @@ test('PDF 阅读器：译文页文字可选中、复制；Ctrl+F 查找跨行的
   await expect.poll(yellow).toBeGreaterThan(100);
   await page.locator('#cjk-font').selectOption('');
 
+  // 强调面板：计数、列表、导出 Markdown（同一段附原文对照）
+  const toggle = page.locator('#hl-toggle');
+  await expect(toggle).toHaveText('强调 1');
+  await toggle.click();
+  const panel = page.locator('#hl-panel');
+  await expect(panel.locator('.hl-quote')).toHaveText(['【译】A Study of Bilingual Reading']);
+  await expect(panel.locator('.hl-page')).toHaveText(['第 1 页']);
+  const [download] = await Promise.all([page.waitForEvent('download'), panel.getByRole('button', { name: '导出 .md' }).click()]);
+  expect(download.suggestedFilename()).toBe('sample.pdf-强调.md');
+  const md = await download.createReadStream().then(async (s) => {
+    let text = '';
+    for await (const chunk of s) text += chunk;
+    return text;
+  });
+  expect(md).toContain('# sample.pdf：强调');
+  expect(md).toContain(`来源：${server.url}/sample.pdf`);
+  expect(md).toContain('## 第 1 页\n\n- ==【译】A Study of Bilingual Reading==\n\n  > 原文：A Study of Bilingual Reading');
+  await toggle.click();
+  await expect(panel).toBeHidden();
+
   await page.reload();
   await expect(page.locator('#progress')).toContainText('已翻译 2 / 2 页');
   await expect.poll(yellow).toBeGreaterThan(100);
@@ -1329,6 +1349,18 @@ test('PDF 阅读器：译文页文字可选中、复制；Ctrl+F 查找跨行的
   await expect(bar.getByRole('button', { name: '清除' })).toBeVisible();
   await bar.getByRole('button', { name: '清除' }).click();
   await expect.poll(yellow).toBe(0);
+  await expect.poll(stored).toEqual([]);
+  await expect(toggle).toHaveText('强调 0');
+
+  // 在面板里删除单条强调
+  await selectTitle();
+  await bar.locator('[data-style="green"]').click();
+  await expect(toggle).toHaveText('强调 1');
+  await toggle.click();
+  await panel.locator('.hl-item').click();
+  await panel.getByRole('button', { name: '删除这条强调' }).click();
+  await expect(toggle).toHaveText('强调 0');
+  await expect(panel).toContainText('强调会列在这里');
   await expect.poll(stored).toEqual([]);
   expect(errors).toEqual([]);
   await page.close();

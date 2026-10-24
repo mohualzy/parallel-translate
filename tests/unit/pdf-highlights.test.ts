@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addHighlight, locate, removeRange, type PdfHighlight } from '@/lib/pdf/highlights';
+import { addHighlight, highlightsMarkdown, locate, removeRange, type PdfHighlight } from '@/lib/pdf/highlights';
 
 const TEXT = '注意力机制是 Transformer 的核心。';
 const textOf = (page: number, key: string) => (page === 1 && key === 'k' ? TEXT : undefined);
@@ -52,5 +52,39 @@ describe('addHighlight', () => {
 describe('removeRange', () => {
   it('清除区间覆盖的部分；完全覆盖的整条删掉', () => {
     expect(spans(removeRange([h(0, 6), h(8, 10)], { page: 1, key: 'k', start: 3, end: 12 }, textOf))).toEqual([[0, 3, 'yellow', '注意力']]);
+  });
+});
+
+describe('highlightsMarkdown', () => {
+  it('按页分节，同一段的强调列在一起并附原文；非黄色注明颜色，下划线用 <u>', () => {
+    const md = highlightsMarkdown('Attention Is All You Need', 'https://arxiv.org/pdf/1706.03762', [
+      { page: 2, key: 'a', style: 'yellow', quote: '注意力机制', source: 'Attention   mechanisms\nhave become' },
+      { page: 2, key: 'a', style: 'green', quote: '序列建模' },
+      { page: 2, key: 'b', style: 'underline', quote: '多头注意力', source: 'Multi-head attention' },
+      { page: 5, key: 'c', style: 'pink', quote: '位置编码' },
+    ]);
+    expect(md).toBe(
+      [
+        '# Attention Is All You Need：强调',
+        '',
+        '来源：https://arxiv.org/pdf/1706.03762',
+        '',
+        '## 第 2 页',
+        '',
+        '- ==注意力机制==',
+        '- ==序列建模==（绿）',
+        '',
+        '  > 原文：Attention mechanisms have become',
+        '',
+        '- <u>多头注意力</u>',
+        '',
+        '  > 原文：Multi-head attention',
+        '',
+        '## 第 5 页',
+        '',
+        '- ==位置编码==（粉）',
+        '',
+      ].join('\n'),
+    );
   });
 });

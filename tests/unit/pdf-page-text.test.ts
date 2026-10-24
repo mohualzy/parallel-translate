@@ -53,6 +53,7 @@ const translated: PageTextBlock = {
   key: 'k',
   text: '注意力 is all',
   translated: true,
+  source: 'Attention is all',
   pieces: [
     { start: 0, end: 1, x: 0, w: 10, baseline: 20, size: 10, line: 0 },
     { start: 1, end: 2, x: 10, w: 10, baseline: 20, size: 10, line: 0 },
