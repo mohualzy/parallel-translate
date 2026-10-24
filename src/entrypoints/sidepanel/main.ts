@@ -125,6 +125,19 @@ async function init() {
     setTimeout(() => (button.textContent = '复制'), 1500);
   });
   source.addEventListener('input', renderAutoLabel);
+  // 粘贴即翻译：paste 事件触发时输入框的值还没更新，等这一轮事件处理完再读
+  source.addEventListener('paste', () => {
+    setTimeout(() => {
+      renderAutoLabel();
+      translate();
+    }, 0);
+  });
+  // 已经翻译过时，改服务、风格、目标语言直接按新设置重翻
+  for (const select of [providerSelect, profileSelect, targetSelect]) {
+    select.addEventListener('change', () => {
+      if (!resultBox.hidden) translate();
+    });
+  }
   source.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();

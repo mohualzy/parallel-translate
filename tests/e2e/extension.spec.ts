@@ -1105,6 +1105,27 @@ test('侧栏：外文译成目标语言、中文自动译成英文，流式显�
   await panel.close();
 });
 
+test('侧栏：粘贴即自动翻译，不用点按钮；已有译文时切换风格自动重翻', async () => {
+  // 扩展页面是 opaque origin，不能授予剪贴板权限；剪贴板全浏览器共享，从普通测试页写入
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: server.url });
+  const writer = await context.newPage();
+  await writer.goto(`${server.url}/page.html`);
+  await writer.evaluate(() => navigator.clipboard.writeText('Pasted text translates by itself.'));
+  await writer.close();
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  const before = server.texts.length;
+  await panel.locator('#source').focus();
+  await panel.keyboard.press('Control+v');
+  await expect(panel.locator('#result')).toHaveText('【译】Pasted text translates by itself.');
+  expect(server.texts.length).toBe(before + 1);
+
+  await panel.locator('#profile').selectOption('news');
+  await expect.poll(() => server.texts.at(-1)!.system.includes('这是新闻报道')).toBe(true);
+  await expect(panel.locator('#result')).toHaveAttribute('data-state', 'done');
+  await panel.close();
+});
+
 test('侧栏：右键菜单经 storage.session 交来的文字自动填入并翻译（侧栏已打开时也生效）', async () => {
   const panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
