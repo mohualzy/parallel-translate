@@ -24,3 +24,5 @@
 - [x] **8. 文档**：DECISIONS D57、PLANS、README、TECH_NOTES。
 - [x] **9. 拖选不跨栏**（用户实测反馈：只选左栏一段，右栏也被选上）：文字层按阅读顺序排列（`readingOrder`，栏优先）。
   验证：单测覆盖两栏 + 通栏分段、单栏、四列作者栏；E2E `two-column.pdf` 真实鼠标拖选左栏两段不含右栏；真实论文第 2 页拖选从 `LRRL` 变为 `LL`，拖到段落空隙、栏缝、左边距都停在附近的字上。
+- [x] **10. 强调面板**：`src/pdf/highlight-panel.ts`；`highlightsMarkdown` 纯函数；阅读器 `highlightEntries` / `revealHighlight` / `removeHighlight`。
+  验证：单测覆盖导出格式（分页、同段归组、颜色标注、原文对照）；E2E 计数、列表、下载的 .md 内容、面板删除后存储清空。
