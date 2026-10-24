@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { breakLines, chainBlocks, flowLayout, tokenize, type FlowBlock, type FlowBox, type Measure, type Token } from '@/lib/pdf/typeset';
+import { breakLines, chainBlocks, flowLayout, lineBaselines, tokenize, type FlowBlock, type FlowBox, type Measure, type Token } from '@/lib/pdf/typeset';
 
 /** 测量：中文字符宽 1 个字号，其他字符宽 0.5 个字号；原子固定宽 20 × 缩放 */
 const measure: Measure = {
@@ -197,5 +197,34 @@ describe('chainBlocks 脚注', () => {
     const footnote = { x0: 0, x1: 100, top: 70, bottom: 80, size: 9 };
     expect(chains([body, footnote], [])).toEqual([[0, 1]]);
     expect(chainBlocks([body, footnote], [], undefined, () => false).map((r) => r.blocks)).toEqual([[0], [1]]);
+  });
+});
+
+describe('lineBaselines', () => {
+  const lines = (...rows: Token[][]) => rows;
+  const text: Token = { kind: 'text', text: '字' };
+  const atom: Token = { kind: 'atom', index: 0 };
+  /** 原子 0 是一个高的分数：基线上方 1.6、下方 0.9 个原字号 */
+  const tall: Measure = { ...measure, atomExtent: (_i, scale) => ({ above: 16 * scale, below: 9 * scale }) };
+
+  it('没有高的公式：行距固定，块高同原来的算法', () => {
+    const r = lineBaselines(lines([text], [text], [text]), 10, 1, 1.32, measure);
+    [10, 23.2, 36.4].forEach((b, i) => expect(r.baselines[i]).toBeCloseTo(b));
+    expect(r.height).toBeCloseTo(39.4);
+  });
+
+  it('某一行有高的公式：只撑开这一行和上下相邻的间距', () => {
+    const r = lineBaselines(lines([text], [text, atom], [text], [text]), 10, 1, 1.32, tall);
+    const gaps = r.baselines.slice(1).map((b, i) => b - r.baselines[i]!);
+    // 第 2 行上伸 16：与第 1 行的间距 = 2.2（正文下伸）+ 16 + 0.8；第 2、3 行之间 = 9 + 9 + 0.8
+    expect(gaps[0]).toBeCloseTo(19);
+    expect(gaps[1]).toBeCloseTo(18.8);
+    expect(gaps[2]).toBeCloseTo(13.2);
+  });
+
+  it('首行就有高的公式：基线下移；末行有：块高加上多出来的下伸', () => {
+    const r = lineBaselines(lines([atom]), 10, 1, 1.32, tall);
+    expect(r.baselines).toEqual([16]);
+    expect(r.height).toBeCloseTo(16 + 3 + (9 - 2.2));
   });
 });

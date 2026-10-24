@@ -1,7 +1,7 @@
 import { sameFont } from '@/lib/pdf/color';
 import { cjkStack } from '@/lib/pdf/fonts';
 import type { HighlightStyle } from '@/lib/pdf/highlights';
-import { BOLD_FONT, ITALIC_FONT, SANS_FONT, type PdfBlock, type PdfTextItem } from '@/lib/pdf/layout';
+import { BOLD_FONT, HANGING_FONT, ITALIC_FONT, SANS_FONT, type PdfAtom, type PdfBlock, type PdfTextItem } from '@/lib/pdf/layout';
 import { blockKeys, keptBlockText, rangeRects, readingOrder, type PageTextBlock, type TextPiece } from '@/lib/pdf/page-text';
 import { flowLayout, tokenize, tokenWidth, type FlowBox, type Measure, type Move, type Placement, type Token } from '@/lib/pdf/typeset';
 import type { Glyph } from './page-render';
@@ -135,6 +135,46 @@ export function isUnchanged(block: PdfBlock, translation: string): boolean {
   return normalize(translation) === normalize(block.text);
 }
 
+/** 底图上原子区域的矢量线：搬原子时一起画过去；白底用 multiply 叠加，不会盖住旁边的字 */
+interface AtomInk {
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+  multiply: boolean;
+}
+
+/**
+ * 原子在基线上方、下方的范围（按文本项估算）。CMEX 等大号符号（根号、大括号）从基线往下挂，
+ * 根号上的横线和符号顶端齐平，上方留一点余量。
+ */
+function atomExtentOf(atom: PdfAtom): { above: number; below: number } {
+  let above = 0;
+  let below = 0;
+  for (const it of atom.items) {
+    const hanging = HANGING_FONT.test(it.font);
+    above = Math.max(above, atom.y - it.y + (hanging ? 0.12 : 0.78) * it.size);
+    below = Math.max(below, it.y - atom.y + (hanging ? 1.0 : 0.24) * it.size);
+  }
+  return { above, below };
+}
+
+/** 底图（不含文字）上原子区域里有没有矢量线；有则记下区域，搬原子时一起画 */
+function atomInkOf(bg: CanvasRenderingContext2D, box: { x0: number; width: number }, y: number, e: { above: number; below: number }): AtomInk | undefined {
+  const sx = Math.max(0, Math.floor(box.x0 - 1));
+  const sy = Math.max(0, Math.floor(y - e.above));
+  const sw = Math.min(bg.canvas.width - sx, Math.ceil(box.width + 2));
+  const sh = Math.min(bg.canvas.height - sy, Math.ceil(e.above + e.below));
+  if (sw <= 0 || sh <= 0) return undefined;
+  const d = bg.getImageData(sx, sy, sw, sh).data;
+  let ink = false;
+  for (let i = 4; i < d.length && !ink; i += 4) {
+    if (Math.abs(d[i]! - d[0]!) > 40 || Math.abs(d[i + 1]! - d[1]!) > 40 || Math.abs(d[i + 2]! - d[2]!) > 40) ink = true;
+  }
+  if (!ink) return undefined;
+  return { sx, sy, sw, sh, multiply: d[0]! > 235 && d[1]! > 235 && d[2]! > 235 };
+}
+
 /** 一个要写译文的块：原文字形、原子字形、样式、token 与测量函数 */
 interface Job {
   block: PdfBlock;
@@ -144,6 +184,9 @@ interface Job {
   own: Set<Glyph>;
   atomGlyphs: Glyph[][];
   atomBox: { x0: number; width: number }[];
+  /** 原子在基线上方、下方各占多高（原字号），以及底图上这块区域里的矢量线（分数线、根号横线），没有则为 undefined */
+  atomExtent: { above: number; below: number }[];
+  atomInk: (AtomInk | undefined)[];
   tokens: Token[];
   measure: Measure;
   /** mark：行内样式片段（<gN>）编号 */
@@ -151,7 +194,7 @@ interface Job {
   fill: string;
 }
 
-function makeJob(block: PdfBlock, translation: string, plain: Glyph[], coverage: FontCoverage, cjkFont: string): Job {
+function makeJob(block: PdfBlock, translation: string, plain: Glyph[], coverage: FontCoverage, cjkFont: string, bg: CanvasRenderingContext2D): Job {
   const items = block.lines.flatMap((l) => l.items);
   const own = new Set(items.flatMap((i) => glyphsOf(i, plain)));
   // 空白字形不算进原子：带前导空格的文本项会把原子的左边界拉远，写回时多出一段空
@@ -189,6 +232,8 @@ function makeJob(block: PdfBlock, translation: string, plain: Glyph[], coverage:
     const x0 = Math.min(...gs.map((g) => g.x));
     return { x0, width: Math.max(...gs.map((g) => g.x + g.w)) - x0 };
   });
+  const atomExtent = block.atoms.map(atomExtentOf);
+  const atomInk = block.atoms.map((a, i) => atomInkOf(bg, atomBox[i]!, a.y, atomExtent[i]!));
   const measure: Measure = {
     text: (text, size, mark) => {
       const key = `${mark ?? ''}|${text}`;
@@ -201,6 +246,10 @@ function makeJob(block: PdfBlock, translation: string, plain: Glyph[], coverage:
       return (w * size) / 100;
     },
     atom: (index, scale) => (atomBox[index]?.width ?? 0) * scale,
+    atomExtent: (index, scale) => {
+      const e = atomExtent[index] ?? { above: 0, below: 0 };
+      return { above: e.above * scale, below: e.below * scale };
+    },
   };
   const tokens = tokenize(translation, block.atoms.length, block.marks.length);
   // 显示文本和断行无关：断行丢掉的行末空格也在里面，换字体后偏移不变（强调靠它定位）
@@ -211,7 +260,7 @@ function makeJob(block: PdfBlock, translation: string, plain: Glyph[], coverage:
     offsets.set(t, [text.length, text.length + s.length]);
     text += s;
   }
-  return { block, text, offsets, own, atomGlyphs, atomBox, tokens, measure, fontFor, fill: style.fill };
+  return { block, text, offsets, own, atomGlyphs, atomBox, atomExtent, atomInk, tokens, measure, fontFor, fill: style.fill };
 }
 
 /** 记录各字体实际画过的字符（跨页累积），用来判断译文里的英文能不能用 PDF 自己的字体 */
@@ -291,7 +340,7 @@ export function drawTranslatedPage(
       const t = translations.get(b);
       return t !== undefined && !b.keep && !isUnchanged(b, t);
     })
-    .map((block) => makeJob(block, translations.get(block)!, plain, coverage, cjkFont));
+    .map((block) => makeJob(block, translations.get(block)!, plain, coverage, cjkFont, bg));
   const translated = new Set(jobs.map((j) => j.block));
   // 公式区域能整体平移的条件：四周是纯色底（看不含文字的底图），没有图片、线条跨过边界；
   // 两段直接相连时，中间的空隙要什么都没有（脚注分隔线、图片会截断）
@@ -324,7 +373,7 @@ export function drawTranslatedPage(
   for (const g of glyphs) if (!claimed.has(g)) drawGlyph(ctx, g);
   moveSlots(ctx, bg, moves);
 
-  const pieces = new Map(jobs.map((job, k) => [job.block, drawBlock(ctx, job, placements[k]!)]));
+  const pieces = new Map(jobs.map((job, k) => [job.block, drawBlock(ctx, background, job, placements[k]!)]));
   const textOf = new Map(jobs.map((job) => [job.block, job.text]));
 
   const keys = blockKeys(blocks);
@@ -362,7 +411,7 @@ function moveSlots(ctx: CanvasRenderingContext2D, bg: CanvasRenderingContext2D, 
 }
 
 /** 写一块译文，返回每个 token 的位置 */
-function drawBlock(ctx: CanvasRenderingContext2D, job: Job, p: Placement): TextPiece[] {
+function drawBlock(ctx: CanvasRenderingContext2D, background: HTMLCanvasElement, job: Job, p: Placement): TextPiece[] {
   const { block, measure } = job;
   const pieces: TextPiece[] = [];
   const scale = p.size / block.size;
@@ -370,14 +419,22 @@ function drawBlock(ctx: CanvasRenderingContext2D, job: Job, p: Placement): TextP
   const widthOf = (t: Token) => tokenWidth(t, p.size, scale, measure);
 
   p.lines.forEach((line, i) => {
-    const baseline = p.top + p.size * (1 + i * LINE_HEIGHT);
+    const baseline = p.top + p.baselines[i]!;
     const lineWidth = line.reduce((w, t) => w + widthOf(t), 0);
     let x = block.align === 'center' ? block.x0 + (width - lineWidth) / 2 : block.x0 + (i === 0 ? p.indent.first : p.indent.rest);
     for (const t of line) {
       if (t.kind === 'atom') {
         const box = job.atomBox[t.index]!;
         const atom = block.atoms[t.index]!;
-        // 原子字形以「原子左端、所在行基线」为锚点，平移到当前位置并按字号比例缩放；颜色用字形自己的（引用、链接）
+        // 原子字形以「原子左端、所在行基线」为锚点，平移到当前位置并按字号比例缩放；颜色用字形自己的（引用、链接）。
+        // 分数线、根号横线是底图上的矢量线，不属于字形：把底图上这块区域按同样的变换一起画过去
+        const ink = job.atomInk[t.index];
+        if (ink) {
+          ctx.save();
+          ctx.globalCompositeOperation = ink.multiply ? 'multiply' : 'source-over';
+          ctx.drawImage(background, ink.sx, ink.sy, ink.sw, ink.sh, x + (ink.sx - box.x0) * scale, baseline - (atom.y - ink.sy) * scale, ink.sw * scale, ink.sh * scale);
+          ctx.restore();
+        }
         for (const g of job.atomGlyphs[t.index] ?? []) drawGlyph(ctx, g, [scale, 0, 0, scale, x - box.x0 * scale, baseline - atom.y * scale]);
       } else {
         const text = t.kind === 'space' ? ' ' : t.text;

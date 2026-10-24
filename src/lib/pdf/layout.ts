@@ -86,7 +86,7 @@ export interface PdfBlock {
 /** TeX 等的公式字体 */
 const MATH_FONT = /CMMI|CMSY|CMEX|CMBSY|MSAM|MSBM|Math|Symbol|rsfs|EUFM|EUSM|esint|wasy|stmary|LMMath|STIX.*(Math|Two)/i;
 /** 大号定界符、大型运算符的字体：字形从基线往下挂（cases 的大括号、行间的求和号） */
-const HANGING_FONT = /CMEX|esint|MathExtension/i;
+export const HANGING_FONT = /CMEX|esint|MathExtension/i;
 /** 等宽字体：代码 */
 export const MONO_FONT = /Mono|Courier|CMTT|Consol|Menlo|Inconsolata|Code|SFMono/i;
 /** 无衬线字体：译文的中文、缺字的英文据此选黑体还是宋体（pdf.js 按字体标志判断，TeX 生成的 PDF 常常判错） */

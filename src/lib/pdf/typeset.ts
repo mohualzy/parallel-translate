@@ -67,6 +67,8 @@ export interface Measure {
   text(text: string, size: number, mark?: number): number;
   /** 原子按比例缩放后的宽度 */
   atom(index: number, scale: number): number;
+  /** 原子按比例缩放后在基线上方、下方各占多高（分数、根号比正文高）；不提供时按正文算 */
+  atomExtent?(index: number, scale: number): { above: number; below: number };
 }
 
 /** token 的宽度：断行和绘制共用，两边算出来的位置才一致 */
@@ -148,6 +150,8 @@ export interface Placement {
   top: number;
   size: number;
   lines: Token[][];
+  /** 每行基线相对 top 的距离：行内有高的公式时那一行的行距会撑开 */
+  baselines: number[];
   indent: Indent;
 }
 
@@ -275,7 +279,35 @@ function tailSlot(blocks: FlowBox[], obstacles: FlowBox[], last: number, slotOk:
 }
 
 /** 字顶到末行字底的高度，与 PdfBlock 的 top / bottom 口径一致 */
-const heightOf = (lines: number, size: number, lineHeight: number) => (lines === 0 ? 0 : size * (1 + (lines - 1) * lineHeight + 0.3));
+/** 正文字形在基线上方、下方大约占多高（字号的倍数） */
+const TEXT_ABOVE = 0.9;
+const TEXT_BELOW = 0.22;
+
+/**
+ * 每行基线相对块顶的位置与块高。正常行距是 lineHeight 倍字号；
+ * 行内有高的公式（分数、根号）时，相邻两行的「上一行下伸 + 下一行上伸」放不下就撑开这一处，其他行不变。
+ */
+export function lineBaselines(lines: Token[][], size: number, scale: number, lineHeight: number, measure: Measure): { baselines: number[]; height: number } {
+  if (lines.length === 0) return { baselines: [], height: 0 };
+  const extent = lines.map((line) => {
+    let above = TEXT_ABOVE * size;
+    let below = TEXT_BELOW * size;
+    for (const t of line) {
+      if (t.kind !== 'atom' || !measure.atomExtent) continue;
+      const e = measure.atomExtent(t.index, scale);
+      above = Math.max(above, e.above);
+      below = Math.max(below, e.below);
+    }
+    return { above, below };
+  });
+  const baselines = [size + Math.max(0, extent[0]!.above - size)];
+  for (let i = 1; i < lines.length; i++) {
+    const gap = Math.max(lineHeight * size, extent[i - 1]!.below + extent[i]!.above + 0.08 * size);
+    baselines.push(baselines[i - 1]! + gap);
+  }
+  const last = extent.at(-1)!;
+  return { baselines, height: baselines.at(-1)! + 0.3 * size + Math.max(0, last.below - TEXT_BELOW * size) };
+}
 
 /**
  * 整页译文排版：按串排布，每串选一个统一的缩放，从原字号往下试，直到整串装进原来的高度；
@@ -312,8 +344,9 @@ export function flowLayout(
         const extra = Math.max(0, b.top - prev.bottom + 0.1 * b.size) * scale;
         top = cursor + (lineHeight - 1.3) * size + extra;
       }
-      placed.push({ top, size, lines, indent });
-      cursor = top + heightOf(lines.length, size, lineHeight);
+      const { baselines, height } = lineBaselines(lines, size, scale, lineHeight, b.measure);
+      placed.push({ top, size, lines, baselines, indent });
+      cursor = top + height;
     });
     if (run.tail) {
       moves.push({ ...run.tail, dy: cursor - run.tail.top });
