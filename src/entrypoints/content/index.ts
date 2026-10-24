@@ -44,6 +44,13 @@ export default defineContentScript({
       translator.onEnabledChange(
         (enabled) => void sendToBackground({ type: 'broadcast-enabled', enabled }).catch(() => undefined),
       );
+      // 失败原因直接可见；同一原因 10 秒内只提示一次，免得一批接一批地刷屏
+      let lastError = { message: '', at: 0 };
+      translator.onBatchError = (message, failed) => {
+        if (message === lastError.message && Date.now() - lastError.at < 10_000) return;
+        lastError = { message, at: Date.now() };
+        void showToast(ctx, `${failed} 段翻译失败：${message}。点击任一失败提示可全部重试`, 8000);
+      };
     }
     const floatBall = new FloatBall(ctx, translator);
     void floatBall.sync(settings);
@@ -78,6 +85,7 @@ export default defineContentScript({
       if (request.type === 'toggle') translator.toggle();
       if (request.type === 'translate-whole-page') translator.translateWholePage();
       if (request.type === 'toggle-mask') translator.toggleMask();
+      if (request.type === 'retry-failed') translator.retryFailed();
       if (request.type === 'toggle-display-mode') {
         const displayMode = translator.settings.displayMode === 'bilingual' ? 'translation' : 'bilingual';
         void saveSettings({ displayMode });

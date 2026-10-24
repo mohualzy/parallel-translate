@@ -659,24 +659,65 @@ test('悬停翻译：鼠标停在段落上单按 Ctrl 翻译/收起这一段', a
   await page.close();
 });
 
-test('出错：显示可点击重试的提示，恢复后点击即可翻译', async () => {
+/** 在标题后插入几段没有缓存过的新段落（用于制造失败） */
+async function addFreshParagraphs(page: Page, prefix: string, count: number) {
+  await page.evaluate(
+    ({ prefix, count }) => {
+      const title = document.querySelector('#title')!;
+      for (let i = count - 1; i >= 0; i--) {
+        const p = document.createElement('p');
+        p.id = `${prefix}-${i}`;
+        p.textContent = `A brand new ${prefix} sentence number ${i} that is not cached yet.`;
+        title.after(p);
+      }
+    },
+    { prefix, count },
+  );
+}
+
+test('出错：提示失败原因；点击任一失败提示，所有失败段落一起重试', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);
-  await page.evaluate(() => {
-    const p = document.createElement('p');
-    p.id = 'p-error';
-    p.textContent = 'A brand new sentence that is not cached yet.';
-    document.querySelector('#title')!.after(p);
-  });
+  await addFreshParagraphs(page, 'err', 2);
   server.failWith = 401;
   await toggle(page);
-  const error = page.locator('#p-error > ptx-t.ptx-error');
-  await expect(error).toBeVisible();
-  await expect(error).toHaveAttribute('title', /API Key 无效/);
+  const errors = page.locator('ptx-t.ptx-error');
+  await expect(errors).toHaveCount(2);
+  await expect(errors.first()).toHaveAttribute('title', /API Key 无效/);
+  await expect(page.locator('ptx-ui-toast .toast')).toContainText(/段翻译失败：.*API Key 无效.*点击任一失败提示可全部重试/);
 
   server.failWith = null;
-  await error.click();
-  await expect(translation(page, '#p-error')).toContainText('【译】A brand new sentence');
+  await errors.first().click();
+  await expect(translation(page, '#err-0')).toContainText('【译】A brand new err sentence number 0');
+  await expect(translation(page, '#err-1')).toContainText('【译】A brand new err sentence number 1');
+  await expect(errors).toHaveCount(0);
+  await page.close();
+});
+
+test('出错：弹窗显示「重试失败的 N 段」，点击后全部重试', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  await addFreshParagraphs(page, 'pop', 2);
+  server.failWith = 401;
+  await toggle(page);
+  await expect(page.locator('ptx-t.ptx-error')).toHaveCount(2);
+  server.failWith = null;
+
+  // 弹窗作为同一窗口里的后台标签页打开，它的「当前标签页」就是测试页
+  await page.bringToFront();
+  const popupPromise = context.waitForEvent('page');
+  await sw.evaluate(async (target) => {
+    const tab = (await chrome.tabs.query({})).find((t) => t.url === target)!;
+    await chrome.tabs.create({ windowId: tab.windowId, url: chrome.runtime.getURL('/popup.html'), active: false });
+  }, page.url());
+  const popup = await popupPromise;
+  const retry = popup.locator('#retry');
+  await expect(retry).toHaveText('重试失败的 2 段');
+  await retry.click();
+  await expect(translation(page, '#pop-0')).toContainText('【译】A brand new pop sentence number 0');
+  await expect(translation(page, '#pop-1')).toContainText('【译】A brand new pop sentence number 1');
+  await expect(retry).toBeHidden();
+  await popup.close();
   await page.close();
 });
 

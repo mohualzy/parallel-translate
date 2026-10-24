@@ -130,6 +130,9 @@ export class PageTranslator {
   /** 开启翻译后整页几乎没有可翻译内容时回调（多半已是目标语言） */
   onNothingToTranslate?: () => void;
 
+  /** 一批请求有段失败时回调：失败原因与当前失败段落总数（页面据此提示，见批量重试设计） */
+  onBatchError?: (message: string, failed: number) => void;
+
   /** 订阅「整页翻译开/关」变化（悬浮球等 UI 据此同步状态），返回取消订阅函数 */
   onEnabledChange(listener: (enabled: boolean) => void): () => void {
     this.enabledListeners.add(listener);
@@ -252,6 +255,19 @@ export class PageTranslator {
       p.dismissed = false;
       this.renderDone(p);
     } else if (p.state === 'idle' || p.state === 'error') {
+      p.dismissed = false;
+      this.enqueue(p, true);
+    }
+  }
+
+  /**
+   * 重试本页所有失败的段落。失败几乎总是成片发生（限流、网络、余额），原因是共同的，
+   * 所以点任一失败提示都全部重试；走正常队列，照样合批、受并发上限约束。
+   */
+  retryFailed() {
+    const failed = [...this.paragraphs].filter((p) => p.state === 'error' && p.container.isConnected);
+    // 倒序插到队首，保持文档顺序
+    for (const p of failed.reverse()) {
       p.dismissed = false;
       this.enqueue(p, true);
     }
@@ -531,6 +547,7 @@ export class PageTranslator {
           this.renderError(p);
         }
       });
+      if (res.translations.some((t) => !t)) this.reportError(res.error ?? '翻译失败');
     } catch (err) {
       if (generation !== this.generation) return;
       const message = err instanceof Error ? err.message : String(err);
@@ -540,6 +557,7 @@ export class PageTranslator {
         p.error = message;
         this.renderError(p);
       }
+      this.reportError(message);
     } finally {
       this.inflight--;
       this.flush();
@@ -596,6 +614,10 @@ export class PageTranslator {
     el.replaceChildren(inner);
     this.applyHide(p, this.settings.displayMode === 'translation');
     this.scheduleLayoutCheck(p);
+  }
+
+  private reportError(message: string) {
+    this.onBatchError?.(message, this.state().failed);
   }
 
   private renderError(p: Paragraph) {
@@ -697,7 +719,7 @@ export class PageTranslator {
     if (!p) return;
     e.preventDefault();
     e.stopPropagation();
-    this.enqueue(p, true);
+    this.retryFailed();
   }
 
   // ---------- 动态内容 ----------

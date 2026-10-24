@@ -78,6 +78,8 @@ export type TabRequest =
   | { type: 'translate-whole-page' }
   | { type: 'toggle-display-mode' }
   | { type: 'toggle-mask' }
+  /** 重试本页所有失败的段落 */
+  | { type: 'retry-failed' }
   /** Alt+I：发给所有 frame，由焦点所在 frame 翻译其中的输入框 */
   | { type: 'translate-input' }
   | { type: 'get-state' }

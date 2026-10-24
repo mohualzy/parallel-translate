@@ -6,6 +6,7 @@ import { getProviders, getSettings, saveSettings, type DisplayMode, type Setting
 import { $, fillSelect, languageOptions, styleOptions } from '@/ui/labels';
 
 const toggleBtn = $<HTMLButtonElement>('#toggle');
+const retryBtn = $<HTMLButtonElement>('#retry');
 const statusEl = $('#status');
 const noticeEl = $('#notice');
 
@@ -13,6 +14,8 @@ let tabId: number | undefined;
 let host = '';
 
 function renderState(state: TabState | undefined) {
+  retryBtn.hidden = !state?.enabled || state.failed === 0;
+  if (state) retryBtn.textContent = `重试失败的 ${state.failed} 段`;
   if (!state) {
     toggleBtn.disabled = true;
     toggleBtn.textContent = '此页面无法翻译';
@@ -120,6 +123,10 @@ async function init() {
   toggleBtn.addEventListener('click', async () => {
     if (tabId === undefined) return;
     renderState(await sendToTab(tabId, { type: 'toggle' }).catch(() => undefined));
+  });
+  retryBtn.addEventListener('click', async () => {
+    if (tabId === undefined) return;
+    renderState(await sendToTab(tabId, { type: 'retry-failed' }).catch(() => undefined));
   });
   $('#open-options').addEventListener('click', () => browser.runtime.openOptionsPage());
   $('#shortcuts').addEventListener('click', () => browser.tabs.create({ url: 'chrome://extensions/shortcuts' }));
