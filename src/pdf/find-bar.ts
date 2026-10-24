@@ -4,11 +4,14 @@ import { rangeRects, type PageTextBlock } from '@/lib/pdf/page-text';
 /**
  * 阅读器的查找栏（接管 Ctrl+F，设计见 docs/specs/2026-10-24-pdf-text-layer-design.md）：
  * 浏览器原生查找不能跨绝对定位的行匹配，中文换行处的词经常搜不到；这里在显示文本里搜，命中处叠框。
+ * 可切换搜译文页或原文页。
  */
 
+export type FindSide = 'translated' | 'original';
+
 export interface FindSource {
-  texts(): [number, { blocks: PageTextBlock[]; width: number; height: number }][];
-  translatedSlot(page: number): HTMLElement | undefined;
+  texts(side: FindSide): [number, { blocks: PageTextBlock[]; width: number; height: number }][];
+  slot(page: number, side: FindSide): HTMLElement | undefined;
 }
 
 export interface FindBar {
@@ -40,15 +43,40 @@ export function setupFindBar(getSource: () => FindSource | undefined): FindBar {
     b.addEventListener('click', onClick);
     return b;
   };
-  bar.append(input, count, button('↑', '上一个', () => step(-1)), button('↓', '下一个', () => step(1)), button('×', '关闭查找', close));
+  // 查找范围：译文页或原文页（搜英文术语、原句）
+  let side: FindSide = 'translated';
+  const scope = document.createElement('div');
+  scope.className = 'segmented';
+  scope.id = 'find-scope';
+  scope.setAttribute('role', 'group');
+  scope.setAttribute('aria-label', '查找范围');
+  for (const [value, label] of [
+    ['translated', '译文'],
+    ['original', '原文'],
+  ] as const) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.value = value;
+    b.textContent = label;
+    b.setAttribute('aria-pressed', String(value === side));
+    b.addEventListener('click', () => {
+      side = value;
+      for (const x of scope.querySelectorAll('button')) x.setAttribute('aria-pressed', String(x.dataset.value === side));
+      input.focus();
+      search();
+    });
+    scope.append(b);
+  }
+  bar.append(scope, input, count, button('↑', '上一个', () => step(-1)), button('↓', '下一个', () => step(1)), button('×', '关闭查找', close));
   document.body.append(bar);
 
   let matches: FindMatch[] = [];
   let current = -1;
 
-  const geometry = (page: number) => getSource()?.texts().find(([p]) => p === page)?.[1];
+  const geometry = (page: number) => getSource()?.texts(side).find(([p]) => p === page)?.[1];
+  const allTexts = () => (getSource()?.texts(side) ?? []).map(([p, g]): [number, PageTextBlock[]] => [p, g.blocks]);
 
-  /** 命中处叠框：每页一个 find-layer，放在文字层下面，不挡选中 */
+  /** 命中处叠框：每个槽位一个 find-layer，放在文字层下面，不挡选中 */
   function paint() {
     for (const layer of document.querySelectorAll('.find-layer')) layer.replaceChildren();
     const source = getSource();
@@ -56,7 +84,7 @@ export function setupFindBar(getSource: () => FindSource | undefined): FindBar {
     matches.forEach((m, i) => {
       const g = geometry(m.page);
       const block = g?.blocks.find((b) => b.key === m.key);
-      const slot = source.translatedSlot(m.page);
+      const slot = source.slot(m.page, side);
       if (!g || !block || !slot) return;
       let layer = slot.querySelector<HTMLElement>('.find-layer');
       if (!layer) {
@@ -72,6 +100,7 @@ export function setupFindBar(getSource: () => FindSource | undefined): FindBar {
       }
     });
     count.textContent = input.value.trim() === '' ? '' : matches.length === 0 ? '无结果' : `${current + 1} / ${matches.length}`;
+    bar.dataset.side = side;
   }
 
   /** 把当前命中滚到视口中间 */
@@ -79,7 +108,7 @@ export function setupFindBar(getSource: () => FindSource | undefined): FindBar {
     const m = matches[current];
     const source = getSource();
     if (!m || !source) return;
-    const slot = source.translatedSlot(m.page);
+    const slot = source.slot(m.page, side);
     const g = geometry(m.page);
     const block = g?.blocks.find((b) => b.key === m.key);
     const rect = block && g ? rangeRects(block, m.start, m.end)[0] : undefined;
@@ -100,7 +129,7 @@ export function setupFindBar(getSource: () => FindSource | undefined): FindBar {
 
   function search() {
     const source = getSource();
-    matches = source ? findMatches(source.texts().map(([p, g]) => [p, g.blocks]), input.value) : [];
+    matches = source ? findMatches(allTexts(), input.value) : [];
     const from = firstVisiblePage();
     current = matches.length === 0 ? -1 : Math.max(0, matches.findIndex((m) => m.page >= from));
     paint();
@@ -145,7 +174,7 @@ export function setupFindBar(getSource: () => FindSource | undefined): FindBar {
       if (bar.hidden || input.value.trim() === '') return;
       const prev = matches[current];
       const source = getSource();
-      matches = source ? findMatches(source.texts().map(([p, g]) => [p, g.blocks]), input.value) : [];
+      matches = source ? findMatches(allTexts(), input.value) : [];
       const same = prev ? matches.findIndex((m) => m.page === prev.page && m.key === prev.key && m.start === prev.start) : -1;
       current = matches.length === 0 ? -1 : same >= 0 ? same : Math.min(Math.max(current, 0), matches.length - 1);
       paint();

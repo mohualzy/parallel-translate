@@ -1,7 +1,7 @@
 import type { HighlightStyle, TextRange } from '@/lib/pdf/highlights';
-import { selectionRanges } from './text-layer';
+import { selectionInTextLayer, selectionRanges } from './text-layer';
 
-/** 选中译文页文字后弹出的工具条：高亮颜色、下划线、复制、清除 */
+/** 选中译文页文字后弹出的工具条：高亮颜色、下划线、复制、清除；在原文页选中时只有「复制」 */
 
 export interface HighlightBarActions {
   apply(ranges: TextRange[], style: HighlightStyle | undefined): void;
@@ -62,11 +62,12 @@ export function setupHighlightBar(pages: HTMLElement, actions: HighlightBarActio
   const show = () => {
     const selection = window.getSelection();
     ranges = selectionRanges(selection);
-    if (ranges.length === 0) {
+    if (ranges.length === 0 && !selectionInTextLayer(selection)) {
       bar.hidden = true;
       return;
     }
-    clear.hidden = !actions.hasHighlight(ranges);
+    bar.classList.toggle('copy-only', ranges.length === 0);
+    clear.hidden = ranges.length === 0 || !actions.hasHighlight(ranges);
     const rects = [...selection!.getRangeAt(0).getClientRects()].filter((r) => r.width > 0);
     const last = rects.at(-1) ?? selection!.getRangeAt(0).getBoundingClientRect();
     bar.hidden = false;

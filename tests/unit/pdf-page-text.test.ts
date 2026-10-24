@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LineItem, PdfBlock } from '@/lib/pdf/layout';
-import { blockKeys, keptBlockText, rangeRects, readingOrder, textLines, type PageTextBlock } from '@/lib/pdf/page-text';
+import { blockKeys, keptBlockText, originalPageText, rangeRects, readingOrder, textLines, type PageTextBlock } from '@/lib/pdf/page-text';
 
 const item = (str: string, x: number, w: number, y = 100, size = 10): LineItem => ({
   str,
@@ -116,5 +116,20 @@ describe('readingOrder', () => {
   it('栏内再分栏（作者栏四列）：按列递归', () => {
     const boxes = [box(0, 90, 0, 10), box(100, 190, 0, 10), box(0, 90, 20, 30), box(100, 190, 20, 30)];
     expect(readingOrder(boxes)).toEqual([0, 2, 1, 3]);
+  });
+});
+
+describe('originalPageText', () => {
+  it('原文页：块标识与译文页相同，按阅读顺序排列', () => {
+    const at = (b: PdfBlock, x0: number, x1: number, top: number, bottom: number, text: string) => Object.assign(b, { x0, x1, top, bottom, text });
+    const left2 = at(block([[item('Left two', 0, 40, 160)]]), 0, 40, 150, 165, 'L2');
+    const right1 = at(block([[item('Right one', 60, 45, 110)]]), 60, 105, 100, 115, 'R1');
+    const left1 = at(block([[item('Left one', 0, 40, 100)]]), 0, 40, 90, 105, 'L1');
+    const blocks = [left1, right1, left2];
+    expect(originalPageText(blocks).map((b) => [b.key, b.text])).toEqual([
+      ['L1#0', 'Left one'],
+      ['L2#0', 'Left two'],
+      ['R1#0', 'Right one'],
+    ]);
   });
 });

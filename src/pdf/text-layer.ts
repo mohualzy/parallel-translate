@@ -73,12 +73,13 @@ function offsetIn(span: HTMLElement, container: Node, offset: number, atEnd: boo
   return atEnd ? len : 0;
 }
 
-/** 当前选区落在各块里的部分（块内显示文本的偏移），同一块合并成一段 */
+/** 当前选区落在译文页各块里的部分（块内显示文本的偏移），同一块合并成一段 */
 export function selectionRanges(selection: Selection | null): TextRange[] {
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) return [];
   const range = selection.getRangeAt(0);
   const merged = new Map<string, TextRange>();
-  for (const span of document.querySelectorAll<HTMLElement>('.text-layer span[data-start]')) {
+  // 强调只存在译文页上；原文页的选区只用来复制
+  for (const span of document.querySelectorAll<HTMLElement>('.slot.translated .text-layer span[data-start]')) {
     if (!range.intersectsNode(span)) continue;
     const group = span.closest<HTMLElement>('.tl-block');
     const page = Number(span.closest<HTMLElement>('.page')?.dataset.page);
@@ -95,4 +96,10 @@ export function selectionRanges(selection: Selection | null): TextRange[] {
     } else merged.set(id, { page, key: group.dataset.key, start: base + a, end: base + b });
   }
   return [...merged.values()];
+}
+
+/** 选区是否落在某个文字层里（含原文页） */
+export function selectionInTextLayer(selection: Selection | null): boolean {
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+  return [...document.querySelectorAll('.text-layer')].some((layer) => selection.containsNode(layer, true));
 }

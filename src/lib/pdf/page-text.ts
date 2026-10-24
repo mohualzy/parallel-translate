@@ -194,6 +194,14 @@ function orderIds(boxes: Box[], ids: number[]): number[] {
   return out;
 }
 
+/** 原文页的文字几何：每块按原位置取原文，按阅读顺序排列（块标识和译文页相同） */
+export function originalPageText(blocks: PdfBlock[]): PageTextBlock[] {
+  const keys = blockKeys(blocks);
+  return readingOrder(blocks)
+    .map((i) => keptBlockText(blocks[i]!, keys[i]!))
+    .filter((b) => b.pieces.length > 0);
+}
+
 /**
  * 块的阅读顺序（返回下标）：版面分析按纵坐标建块，两栏的段落是交错的；
  * 文字层按这个顺序排，浏览器拖选时才不会把另一栏夹在中间的段落一起选上。

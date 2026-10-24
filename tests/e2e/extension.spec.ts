@@ -1243,7 +1243,7 @@ test('PDF 阅读器：切换译文中文字体只重画、不重新请求翻译�
   await page.close();
 });
 
-test('PDF 阅读器：译文页文字可选中、复制；Ctrl+F 查找跨行的词；划词高亮保存在本机，刷新后仍在，可清除；强调面板列出、导出 Markdown、删除', async () => {
+test('PDF 阅读器：译文页文字可选中、复制；Ctrl+F 查找跨行的词；划词高亮保存在本机，刷新后仍在，可清除；强调面板列出、导出 Markdown、删除；原文页可选中复制、可查找原文', async () => {
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -1252,7 +1252,10 @@ test('PDF 阅读器：译文页文字可选中、复制；Ctrl+F 查找跨行的
   await expect(page.locator('#progress')).toContainText('已翻译 2 / 2 页');
   const layer = page.locator('.page[data-page="1"] .slot.translated .text-layer');
   await expect(layer).toContainText('【译】A Study of Bilingual Reading');
-  // 译文画在画布上，文字层的透明文字让浏览器的查找能搜到
+  // 原文页也有文字层（原文，按阅读顺序）
+  const originalLayer = page.locator('.page[data-page="1"] .slot.original .text-layer');
+  await expect(originalLayer).toContainText('A Study of Bilingual Reading');
+  await expect(originalLayer).not.toContainText('【译】');
 
   // Ctrl+F 打开阅读器自己的查找栏：标题在译文页上折成两行，跨行的短语也能找到
   await page.keyboard.press('Control+f');
@@ -1260,7 +1263,15 @@ test('PDF 阅读器：译文页文字可选中、复制；Ctrl+F 查找跨行的
   await expect(find).toBeFocused();
   await find.fill('bilingual reading');
   await expect(page.locator('#find-count')).toHaveText('1 / 1');
-  await expect(page.locator('.page[data-page="1"] .find-hit.current')).toHaveCount(2);
+  await expect(page.locator('.page[data-page="1"] .slot.translated .find-hit.current')).toHaveCount(2);
+  // 切到「原文」：在原文页里找，命中框画在原文页上；译文特有的文字找不到
+  await page.locator('#find-scope button[data-value="original"]').click();
+  await expect(page.locator('#find-count')).toHaveText('1 / 1');
+  await expect(page.locator('.page[data-page="1"] .slot.original .find-hit.current')).toHaveCount(1);
+  await expect(page.locator('.slot.translated .find-hit')).toHaveCount(0);
+  await find.fill('【译】');
+  await expect(page.locator('#find-count')).toHaveText('无结果');
+  await page.locator('#find-scope button[data-value="translated"]').click();
   await find.fill('【译】');
   await expect(page.locator('#find-count')).toHaveText('1 / 4');
   await find.press('Enter');
@@ -1276,7 +1287,7 @@ test('PDF 阅读器：译文页文字可选中、复制；Ctrl+F 查找跨行的
   /** 选中文字层里的标题（折成两行），松开鼠标，返回选中的文字 */
   const selectTitle = () =>
     page.evaluate(() => {
-      const span = [...document.querySelectorAll('.page[data-page="1"] .text-layer span')].find((s) => s.textContent!.includes('A Study'))!;
+      const span = [...document.querySelectorAll('.page[data-page="1"] .slot.translated .text-layer span')].find((s) => s.textContent!.includes('A Study'))!;
       const range = document.createRange();
       range.selectNodeContents(span.closest('.tl-block')!);
       const sel = window.getSelection()!;
@@ -1288,7 +1299,7 @@ test('PDF 阅读器：译文页文字可选中、复制；Ctrl+F 查找跨行的
   /** 标题那一行在译文画布上的黄色像素数 */
   const yellow = () =>
     page.evaluate(() => {
-      const span = [...document.querySelectorAll('.page[data-page="1"] .text-layer span')].find((s) => s.textContent!.includes('A Study'))!;
+      const span = [...document.querySelectorAll('.page[data-page="1"] .slot.translated .text-layer span')].find((s) => s.textContent!.includes('A Study'))!;
       const canvas = document.querySelector<HTMLCanvasElement>('.page[data-page="1"] canvas.translated')!;
       const c = canvas.getBoundingClientRect();
       const r = span.getBoundingClientRect();
@@ -1305,9 +1316,24 @@ test('PDF 阅读器：译文页文字可选中、复制；Ctrl+F 查找跨行的
     return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   });
   expect(await yellow()).toBe(0);
-  expect(await selectTitle()).toContain('【译】A Study of Bilingual Reading');
   const bar = page.locator('#hl-bar');
+  // 原文页上选中：工具条只有「复制」（强调只存在译文页上）
+  await page.evaluate(() => {
+    const group = document.querySelector('.page[data-page="1"] .slot.original .tl-block')!;
+    const range = document.createRange();
+    range.selectNodeContents(group);
+    getSelection()!.removeAllRanges();
+    getSelection()!.addRange(range);
+    document.querySelector('#pages')!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
   await expect(bar).toBeVisible();
+  await expect(bar.getByRole('button', { name: '复制' })).toBeVisible();
+  await expect(bar.locator('[data-style="yellow"]')).toBeHidden();
+  await expect(bar.getByRole('button', { name: '清除' })).toBeHidden();
+
+  expect(await selectTitle()).toContain('【译】A Study of Bilingual Reading');
+  await expect(bar).toBeVisible();
+  await expect(bar.locator('[data-style="yellow"]')).toBeVisible();
   await expect(bar.getByRole('button', { name: '清除' })).toBeHidden();
   await bar.locator('[data-style="yellow"]').click();
   await expect(bar).toBeHidden();

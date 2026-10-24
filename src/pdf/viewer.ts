@@ -1,6 +1,6 @@
 import type { GlossaryEntry } from '@/lib/glossary';
 import { addHighlight, locate, removeRange, type HighlightEntry, type HighlightStyle, type PdfHighlight, type TextRange } from '@/lib/pdf/highlights';
-import { rangeRects, type PageTextBlock } from '@/lib/pdf/page-text';
+import { originalPageText, rangeRects, type PageTextBlock } from '@/lib/pdf/page-text';
 import { isProbablyInLanguage } from '@/lib/languages';
 import { sendToBackground, type PageContext } from '@/lib/messages';
 import { splitByColor } from '@/lib/pdf/color';
@@ -19,14 +19,23 @@ const TERMS_MAX_CHARS = 8000;
 const TERMS_TIMEOUT_MS = 10_000;
 
 export type ViewMode = 'bilingual' | 'translation' | 'original';
+export type PageSide = 'translated' | 'original';
+
+/** 一页的文字几何与画布像素尺寸 */
+export interface PageGeometry {
+  blocks: PageTextBlock[];
+  width: number;
+  height: number;
+}
 
 interface PageState {
   index: number;
   el: HTMLElement;
-  /** 原文页、译文页两个槽位；释放时只删画布，译文页的文字层留着（看过的页 Ctrl+F 都搜得到） */
+  /** 原文页、译文页两个槽位；释放时只删画布，两边的文字层留着（看过的页都能查找、复制） */
   originalSlot: HTMLElement;
   translatedSlot: HTMLElement;
   layer: HTMLElement;
+  originalLayer: HTMLElement;
   /** 页面在缩放 1 时的尺寸（PDF 点） */
   width: number;
   height: number;
@@ -69,7 +78,9 @@ export class PdfViewer {
   /** 划词强调（按文档保存）与各页最近一次画出的文字几何（定位强调用） */
   private highlights: PdfHighlight[] = [];
   /** 各页最近一次画出的文字几何与画布尺寸；画布释放后仍保留，查找、强调定位都用它 */
-  private pageTexts = new Map<number, { blocks: PageTextBlock[]; width: number; height: number }>();
+  private pageTexts = new Map<number, PageGeometry>();
+  /** 各页原文的文字几何（原文页的文字层、查找原文用） */
+  private originalTexts = new Map<number, PageGeometry>();
   /** 某页的文字重画了（译文到达、换字体、缩放）：查找栏据此刷新命中 */
   onTextChange?: (page: number) => void;
   /** 强调增删了（工具栏计数、强调面板据此刷新） */
@@ -104,9 +115,12 @@ export class PdfViewer {
       const layer = document.createElement('div');
       layer.className = 'text-layer';
       translatedSlot.append(layer);
+      const originalLayer = document.createElement('div');
+      originalLayer.className = 'text-layer';
+      originalSlot.append(originalLayer);
       el.append(originalSlot, translatedSlot);
       this.container.append(el);
-      this.pages.push({ index: i, el, originalSlot, translatedSlot, layer, width: vp.width, height: vp.height, done: false, failed: 0 });
+      this.pages.push({ index: i, el, originalSlot, translatedSlot, layer, originalLayer, width: vp.width, height: vp.height, done: false, failed: 0 });
     }
     const firstText = await this.collectText(5);
     this.autoProfile = /\bAbstract\b|arXiv/i.test(firstText.slice(0, 4000)) ? 'paper' : 'general';
@@ -164,7 +178,7 @@ export class PdfViewer {
   }
 
   private release(page: PageState) {
-    page.originalSlot.replaceChildren();
+    page.originalSlot.querySelector('canvas')?.remove();
     page.translatedSlot.querySelector('canvas')?.remove();
     page.rendered = undefined;
     page.rendering = undefined;
@@ -192,10 +206,15 @@ export class PdfViewer {
       [original, 'original'],
       [translated, 'translated'],
     ] as const) canvas.className = kind;
-    page.originalSlot.replaceChildren(original);
+    page.originalSlot.querySelector('canvas')?.remove();
+    page.originalSlot.prepend(original);
     page.translatedSlot.querySelector('canvas')?.remove();
     page.translatedSlot.prepend(translated);
     page.rendered = { scale: viewport.scale, background, glyphs, blocks, translated };
+    // 原文页的文字层：原文不随翻译变化，渲染时建一次
+    const originalText = originalPageText(blocks);
+    this.originalTexts.set(page.index, { blocks: originalText, width: original.width, height: original.height });
+    renderTextLayer(page.originalLayer, originalText, original.width, original.height);
     this.redraw(page);
     if (type3) {
       // Type3 字体用路径画字，去不掉原字形，译文会和原文叠在一起：这一页只显示原文
@@ -310,14 +329,15 @@ export class PdfViewer {
 
   private textOf = (page: number, key: string) => this.pageTexts.get(page)?.blocks.find((b) => b.key === key)?.text;
 
-  /** 看过的各页文字，按页码排序 */
-  texts(): [number, { blocks: PageTextBlock[]; width: number; height: number }][] {
-    return [...this.pageTexts.entries()].sort((a, b) => a[0] - b[0]);
+  /** 看过的各页文字（译文页或原文页），按页码排序 */
+  texts(side: PageSide = 'translated'): [number, PageGeometry][] {
+    return [...(side === 'translated' ? this.pageTexts : this.originalTexts).entries()].sort((a, b) => a[0] - b[0]);
   }
 
-  /** 第 index 页的译文槽位（叠命中框、滚动定位用） */
-  translatedSlot(index: number): HTMLElement | undefined {
-    return this.pages[index - 1]?.translatedSlot;
+  /** 第 index 页的译文 / 原文槽位（叠命中框、滚动定位用） */
+  slot(index: number, side: PageSide = 'translated'): HTMLElement | undefined {
+    const page = this.pages[index - 1];
+    return side === 'translated' ? page?.translatedSlot : page?.originalSlot;
   }
 
   /** 选区里是否已有强调（工具条据此显示「清除」） */

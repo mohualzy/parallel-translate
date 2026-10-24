@@ -164,6 +164,10 @@ body {
   font-size: 13px;
 }
 
+#find-scope button {
+  padding: 3px 8px;
+}
+
 .find-bar input {
   width: 200px;
 }
@@ -310,6 +314,11 @@ body {
 
 .hl-bar button:hover {
   border-color: var(--border);
+}
+
+/* 原文页的选区只能复制（强调只存在译文页上） */
+.hl-bar.copy-only [data-style] {
+  display: none;
 }
 
 .hl-bar .swatch {
