@@ -13,7 +13,7 @@
 
 - [x] **1. PDF 写入器**：`src/lib/pdf/write-pdf.ts`。
   验证：`pnpm vitest run tests/unit/pdf-write.test.ts`：xref 偏移正确；pdf.js 能解析，页数、页面尺寸、标题正确。
-- [x] **2. 阅读器离屏渲染**：翻译逻辑抽成按块补翻；`exportPage(index, scale)` 返回原文、译文画布（含强调）。
+- [x] **2. 阅读器离屏渲染**：翻译逻辑抽成按块补翻；`renderForExport(index, scale)` 返回原文、译文画布（含强调）。
   验证：`just check` 通过；原有 E2E 不变。
 - [x] **3. 导出界面**：工具栏「导出 PDF」→ 对话框（仅译文 / 双语并排，提示未翻译页数）→ 逐页进度 → 下载 `<标题>-译文.pdf` / `-双语.pdf`。
   验证：E2E 导出两种格式：下载文件以 `%PDF` 开头，页数 2，含 `DCTDecode`，双语页宽约为两倍。
