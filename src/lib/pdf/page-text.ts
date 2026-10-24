@@ -126,3 +126,69 @@ export function rangeRects(block: PageTextBlock, start: number, end: number): Te
     .sort((a, b) => a[0] - b[0])
     .map(([, l]) => ({ x: l.x0, y: l.baseline - l.size * 0.92, w: l.x1 - l.x0, h: l.size * 1.18, baseline: l.baseline, size: l.size }));
 }
+
+/** 版面上的块（画布坐标） */
+export interface Box {
+  x0: number;
+  x1: number;
+  top: number;
+  bottom: number;
+}
+
+/**
+ * 找栏缝：一条竖线，两侧都有块且左右两组在纵向上并排；跨过它的块（通栏标题、图注、页码）只能是少数。
+ * 两侧块数最多的那条优先，同样多时跨栏的块越少越好。
+ */
+function findGutter(boxes: Box[], ids: number[]): number | undefined {
+  let best: { x: number; sides: number; straddle: number } | undefined;
+  for (const i of ids) {
+    const x = boxes[i]!.x1 + 0.5;
+    const left = ids.filter((j) => boxes[j]!.x1 <= x);
+    const right = ids.filter((j) => boxes[j]!.x0 >= x);
+    const straddle = ids.length - left.length - right.length;
+    if (left.length === 0 || right.length === 0 || straddle >= left.length + right.length) continue;
+    // 左右两组纵向要有重叠，才是并排的两栏（单栏页里一行短句和下面居中的标题不算）
+    const span = (g: number[]) => [Math.min(...g.map((j) => boxes[j]!.top)), Math.max(...g.map((j) => boxes[j]!.bottom))] as const;
+    const [lt, lb] = span(left);
+    const [rt, rb] = span(right);
+    if (Math.min(lb, rb) <= Math.max(lt, rt)) continue;
+    const sides = left.length + right.length;
+    if (!best || sides > best.sides || (sides === best.sides && straddle < best.straddle)) best = { x, sides, straddle };
+  }
+  return best?.x;
+}
+
+const byPosition = (boxes: Box[]) => (a: number, b: number) => boxes[a]!.top - boxes[b]!.top || boxes[a]!.x0 - boxes[b]!.x0;
+
+function orderIds(boxes: Box[], ids: number[]): number[] {
+  if (ids.length <= 1) return ids;
+  const gutter = findGutter(boxes, ids);
+  if (gutter === undefined) return [...ids].sort(byPosition(boxes));
+  const spans = ids.filter((i) => boxes[i]!.x0 < gutter && boxes[i]!.x1 > gutter).sort(byPosition(boxes));
+  const rest = ids.filter((i) => !spans.includes(i));
+  const out: number[] = [];
+  let used = new Set<number>();
+  // 跨栏的块把页面切成上下几段，每段里先读完左栏再读右栏
+  const band = (limit: number) => {
+    const inBand = rest.filter((i) => !used.has(i) && boxes[i]!.top < limit);
+    used = new Set([...used, ...inBand]);
+    out.push(...orderIds(boxes, inBand.filter((i) => boxes[i]!.x1 <= gutter)), ...orderIds(boxes, inBand.filter((i) => boxes[i]!.x0 >= gutter)));
+  };
+  for (const s of spans) {
+    band(boxes[s]!.top);
+    out.push(s);
+  }
+  band(Infinity);
+  return out;
+}
+
+/**
+ * 块的阅读顺序（返回下标）：版面分析按纵坐标建块，两栏的段落是交错的；
+ * 文字层按这个顺序排，浏览器拖选时才不会把另一栏夹在中间的段落一起选上。
+ */
+export function readingOrder(boxes: Box[]): number[] {
+  return orderIds(
+    boxes,
+    boxes.map((_, i) => i),
+  );
+}

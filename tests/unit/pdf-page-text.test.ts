@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LineItem, PdfBlock } from '@/lib/pdf/layout';
-import { blockKeys, keptBlockText, rangeRects, textLines, type PageTextBlock } from '@/lib/pdf/page-text';
+import { blockKeys, keptBlockText, rangeRects, readingOrder, textLines, type PageTextBlock } from '@/lib/pdf/page-text';
 
 const item = (str: string, x: number, w: number, y = 100, size = 10): LineItem => ({
   str,
@@ -86,5 +86,34 @@ describe('rangeRects', () => {
 
   it('区间外的片段不出矩形', () => {
     expect(rangeRects(translated, 6, 7)).toEqual([]);
+  });
+});
+
+describe('readingOrder', () => {
+  const box = (x0: number, x1: number, top: number, bottom: number) => ({ x0, x1, top, bottom });
+
+  it('两栏：先读完左栏再读右栏；通栏的标题、脚注把页面切成上下几段', () => {
+    const boxes = [
+      box(50, 550, 10, 30), // 0 通栏标题
+      box(50, 290, 40, 100), // 1 左栏
+      box(310, 550, 40, 80), // 2 右栏
+      box(310, 550, 90, 150), // 3 右栏
+      box(50, 290, 110, 200), // 4 左栏
+      box(310, 550, 160, 200), // 5 右栏
+      box(50, 550, 220, 240), // 6 通栏脚注
+      box(50, 290, 250, 280), // 7 左栏
+      box(310, 550, 250, 280), // 8 右栏
+    ];
+    expect(readingOrder(boxes)).toEqual([0, 1, 4, 2, 3, 5, 6, 7, 8]);
+  });
+
+  it('单栏：按从上到下；短行和下面居中的标题不当成两栏', () => {
+    const boxes = [box(50, 550, 10, 60), box(50, 150, 70, 80), box(200, 400, 90, 100), box(50, 550, 110, 160)];
+    expect(readingOrder(boxes)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('栏内再分栏（作者栏四列）：按列递归', () => {
+    const boxes = [box(0, 90, 0, 10), box(100, 190, 0, 10), box(0, 90, 20, 30), box(100, 190, 20, 30)];
+    expect(readingOrder(boxes)).toEqual([0, 2, 1, 3]);
   });
 });

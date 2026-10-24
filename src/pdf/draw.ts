@@ -2,7 +2,7 @@ import { sameFont } from '@/lib/pdf/color';
 import { cjkStack } from '@/lib/pdf/fonts';
 import type { HighlightStyle } from '@/lib/pdf/highlights';
 import { BOLD_FONT, ITALIC_FONT, SANS_FONT, type PdfBlock, type PdfTextItem } from '@/lib/pdf/layout';
-import { blockKeys, keptBlockText, rangeRects, type PageTextBlock, type TextPiece } from '@/lib/pdf/page-text';
+import { blockKeys, keptBlockText, rangeRects, readingOrder, type PageTextBlock, type TextPiece } from '@/lib/pdf/page-text';
 import { flowLayout, tokenize, tokenWidth, type FlowBox, type Measure, type Move, type Placement, type Token } from '@/lib/pdf/typeset';
 import type { Glyph } from './page-render';
 
@@ -269,7 +269,7 @@ export function drawHighlights(ctx: CanvasRenderingContext2D, blocks: PageTextBl
  * translations 里没有的块（还没翻译、不翻译、翻译失败）都按原样显示。
  * 同一栏相邻的译文块连成串依次排布（flowLayout），段距一致，省下的空间留在串末。
  * cjkFont 是设置里的译文中文字体（lib/pdf/fonts.ts），空字符串为自动。
- * 返回每块的显示文本与位置（文字层、强调定位用），顺序同 blocks。
+ * 返回每块的显示文本与位置（文字层、查找、强调定位用），按阅读顺序（先左栏后右栏）排列。
  */
 export function drawTranslatedPage(
   target: HTMLCanvasElement,
@@ -335,7 +335,10 @@ export function drawTranslatedPage(
     const m = moves.find((mv) => b.x0 >= mv.x0 - SLOT_PAD && b.x1 <= mv.x1 + SLOT_PAD && b.top >= mv.top - 1 && b.bottom <= mv.bottom + 1);
     return keptBlockText(b, keys[i]!, m?.dy ?? 0);
   });
-  return pageText.filter((b) => b.pieces.length > 0);
+  // 版面分析按纵坐标建块，两栏交错；文字层要按阅读顺序，拖选时才不会把另一栏的段落夹进来
+  return readingOrder(blocks)
+    .map((i) => pageText[i]!)
+    .filter((b) => b.pieces.length > 0);
 }
 
 /** 公式区域整体平移：先把所有原位置清成底色（按底图取色），再从快照里把各区域画到新位置（区域之间可能重叠） */

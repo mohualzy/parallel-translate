@@ -1334,6 +1334,32 @@ test('PDF 阅读器：译文页文字可选中、复制；Ctrl+F 查找跨行的
   await page.close();
 });
 
+test('PDF 阅读器：两栏页面上拖选左栏两段，不会把夹在中间的右栏段落一起选上（文字层按阅读顺序排列）', async () => {
+  const { TWO_COLUMN_TEXT: t } = await import('./fixtures/sample-pdf');
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/pdf.html?file=${encodeURIComponent(`${server.url}/two-column.pdf`)}`);
+  await expect(page.locator('#progress')).toContainText('已翻译 1 / 1 页');
+  const layer = page.locator('.page[data-page="1"] .slot.translated .text-layer');
+  await expect(layer).toContainText('Omega two');
+  // 文字层的段落顺序：标题、左栏两段、右栏两段
+  const order = await layer.locator('.tl-block').evaluateAll((gs) => gs.map((g) => /Alpha|Omega|Two Column/.exec(g.textContent!)![0] + /one|two|Layout/.exec(g.textContent!)![0]));
+  expect(order).toEqual(['Two ColumnLayout', 'Alphaone', 'Alphatwo', 'Omegaone', 'Omegatwo']);
+
+  // 真实鼠标拖选：从左栏第一段开头拖到左栏第二段第一行中间
+  const lineBox = (text: string) => layer.locator('span', { hasText: text }).first().boundingBox();
+  const from = (await lineBox(t.left[0]![0]!.slice(0, 15)))!;
+  const to = (await lineBox(t.left[1]![0]!.slice(0, 15)))!;
+  await page.mouse.move(from.x + 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 });
+  await page.mouse.up();
+  const selected = await page.evaluate(() => getSelection()!.toString());
+  expect(selected).toContain('Alpha one');
+  expect(selected).toContain('Alpha two');
+  expect(selected).not.toContain('Omega');
+  await page.close();
+});
+
 test('PDF 阅读器：弹窗在 PDF 页面上显示「用双语阅读器打开此 PDF」，点击后本标签页换成阅读器', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/fake.pdf`);

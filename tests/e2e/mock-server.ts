@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
-import { samplePdf } from './fixtures/sample-pdf';
+import { samplePdf, twoColumnPdf } from './fixtures/sample-pdf';
 
 /**
  * 本地 mock：同时提供测试页面和 OpenAI 兼容接口。
@@ -97,9 +97,9 @@ export async function startMockServer(): Promise<MockServer> {
     }
 
     // PDF 阅读器：运行时生成的测试 PDF；fake.pdf 是地址像 PDF 的普通网页（测弹窗按钮，无头浏览器没有自带 PDF 阅读器）
-    if (req.method === 'GET' && url.pathname === '/sample.pdf') {
+    if (req.method === 'GET' && (url.pathname === '/sample.pdf' || url.pathname === '/two-column.pdf')) {
       res.writeHead(200, { 'content-type': 'application/pdf' });
-      res.end(samplePdf());
+      res.end(url.pathname === '/sample.pdf' ? samplePdf() : twoColumnPdf());
       return;
     }
     if (req.method === 'GET' && url.pathname === '/fake.pdf') {
