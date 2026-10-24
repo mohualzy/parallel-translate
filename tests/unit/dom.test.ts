@@ -99,6 +99,21 @@ describe('collectRuns', () => {
     expect(seen).toEqual([root]);
   });
 
+  it('shadow 树里包着 <slot> 的行内自定义元素按块进入，投影内容逐段收集（仿 Reddit 的 devvit-wrapper）', () => {
+    setup('<x-app id="app"><div><p>First projected paragraph.</p><p>Second projected paragraph.</p></div></x-app>');
+    const root = document.getElementById('app')!.attachShadow({ mode: 'open' });
+    root.innerHTML = '<x-wrapper><slot></slot></x-wrapper>';
+    classifier.reset();
+    expect(texts()).toEqual(['First projected paragraph.', 'Second projected paragraph.']);
+  });
+
+  it('视觉隐藏的 shadow 宿主（读屏专用组件）不收集', () => {
+    setup('<p>Visible title.</p><x-sr id="sr" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0)"><span>Visible title.</span></x-sr>');
+    document.getElementById('sr')!.attachShadow({ mode: 'open' }).innerHTML = '<slot></slot>';
+    classifier.reset();
+    expect(texts()).toEqual(['Visible title.']);
+  });
+
   it('html/body 上的 translate="no" 不屏蔽整页', () => {
     setup('<p>Still here</p>');
     document.body.setAttribute('translate', 'no');

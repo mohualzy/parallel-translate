@@ -219,17 +219,18 @@ export class DomClassifier {
     if (IGNORED_TAGS.has(tag) || tag.startsWith('ptx-') || el.matches(VISUALLY_HIDDEN)) return 'ignore';
 
     if (BLOCK_TAGS.has(tag)) return this.isExcluded(el) ? 'skip' : 'block';
-    // Shadow 宿主与 <slot> 的真实内容不在自己的 childNodes 里，按块进入，由 composedChildren 取组合树子节点
-    if (el.shadowRoot || tag === 'slot') return this.isExcluded(el) ? 'skip' : 'block';
 
     const cs = getComputedStyle(el);
     // 脱离文档的元素（以及 happy-dom）会返回空字符串；CSS 中 display 的初始值就是 inline
     const display = cs.display || 'inline';
     if (display === 'none') return 'ignore';
-    // 通用的「视觉隐藏」写法：绝对定位 + clip 裁剪成 0
+    // 通用的「视觉隐藏」写法：绝对定位 + clip 裁剪成 0。要在 shadow 宿主判断之前：
+    // 读屏专用的组件本身也可能是 shadow 宿主（如 Reddit 的 <faceplate-screen-reader-content>）
     if (cs.position === 'absolute' && ((cs.clip && cs.clip !== 'auto') || (cs.clipPath && cs.clipPath !== 'none'))) {
       return 'ignore';
     }
+    // Shadow 宿主与 <slot> 的真实内容不在自己的 childNodes 里，按块进入，由 composedChildren 取组合树子节点
+    if (el.shadowRoot || tag === 'slot') return this.isExcluded(el) ? 'skip' : 'block';
     const inlineLevel = display.startsWith('inline') || display === 'contents' || display.startsWith('ruby');
 
     // 仅译文模式下按钮当容器进入，文字在按钮内部原地替换，按钮本身照常可点
@@ -237,6 +238,9 @@ export class DomClassifier {
     if (OPAQUE_TAGS.has(tag) || this.isExcluded(el)) return inlineLevel ? 'opaque' : 'skip';
     if (!inlineLevel) return 'block';
     if (el.querySelector(BLOCK_SELECTOR)) return 'block';
+    // shadow 树里包着 <slot> 的行内元素（自定义元素默认 display:inline，如 Reddit 的 <devvit-wrapper>）：
+    // 投影进来的内容不是它的后代，querySelector 看不到；按行内处理会把整页并成一个段落
+    if (el.querySelector('slot')) return 'block';
     // 内部用 <br><br> 分段的行内元素（老式网页常见 <font> 包全文）按块处理，才能进入内部逐段切分
     return Array.from(el.querySelectorAll('br')).some(isParagraphBreak) ? 'block' : 'inline';
   }
