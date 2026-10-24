@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>arXiv-like page</title>
+    <!-- arXiv 的样式放在 CSS 层里，标题字号写了 !important（层里的 !important 优先于不在层里的） -->
+    <style>
+      @layer site {
+        #doc-title {
+          font-size: 30px !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 仿 arXiv HTML 论文（LaTeXML）的几种结构，测仅译文模式 -->
+    <h1 id="doc-title">Breaking Planner Integrity Boundary<br style="display: none" />Attack on Embodied Agents</h1>
+    <!-- 目录项：链接后面跟着子目录，段落只占 li 的一部分 -->
+    <nav>
+      <ol>
+        <li id="toc-sec">
+          <a href="#s2" id="toc-link"><span>2 </span>Related Work</a>
+          <ol>
+            <li id="toc-sub"><a href="#s21" id="toc-sub-link">Embodied Planning</a></li>
+          </ol>
+        </li>
+      </ol>
+    </nav>
+    <!-- 行内 MathML 公式：整段是一个段落，公式作为占位保留 -->
+    <p id="math-p">
+      An object physically located at <math display="inline"><mi>l</mi></math> may be represented to the planner as being at
+      <math display="inline"><msub><mi>l</mi><mn>2</mn></msub></math>, while the adversary cannot move it.
+    </p>
+    <!-- 列表项：grid + subgrid，编号与正文分两列；正文段落 display:inline、两端对齐 -->
+    <ol id="grid-list" style="display: grid; grid-template-columns: auto 1fr; width: 600px; padding: 0">
+      <li id="grid-item" style="display: grid; grid-column: 1 / -1; grid-template-columns: subgrid">
+        <span>3.</span>
+        <div id="grid-div" style="text-align: justify">
+          <p id="grid-p" style="display: inline">
+            We construct ESTI-Bench, a planning and execution closed-loop evaluation framework that separately measures
+            planning-level attack success and execution-level attack success, distinguishing planner adoption from
+            final-state realization and explicitly characterizing the planning-to-execution transfer gap.
+          </p>
+        </div>
+      </li>
+    </ol>
+  </body>
+</html>

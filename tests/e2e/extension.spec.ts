@@ -576,6 +576,65 @@ test('仅译文模式：隐藏原文，译文保持原字号', async () => {
   await page.close();
 });
 
+test('仅译文模式（仿 arXiv）：层里 !important 的标题字号也能隐藏；目录项只隐藏链接、子目录保留；行内公式不切段；grid 里的行内段落不误判为挤窄；两端对齐不出首行空白', async () => {
+  await setSettings({ displayMode: 'translation' });
+  const page = await context.newPage();
+  try {
+    await page.goto(`${server.url}/arxiv-like.html`);
+    await toggle(page);
+    // 页面在 CSS 层里给标题写了 !important 字号：仍能把原文字号归零，译文保持原字号
+    await expect(page.locator('#doc-title > ptx-t')).toContainText('【译】Breaking Planner');
+    await expect(page.locator('#doc-title')).toHaveAttribute('data-ptx-hide', '');
+    expect(await page.locator('#doc-title').evaluate((el) => getComputedStyle(el).fontSize)).toBe('0px');
+    expect(await page.locator('#doc-title > ptx-t').evaluate((el) => getComputedStyle(el).fontSize)).toBe('30px');
+    // 目录项：段落只占 li 的一部分，只隐藏链接本身，译文顶替原位；子目录照常显示、单独翻译
+    await expect(page.locator('#toc-sec > ptx-t')).toContainText('【译】2 Related Work');
+    await expect(page.locator('#toc-link')).toHaveAttribute('data-ptx-hide-node', '');
+    await expect(page.locator('#toc-link')).toBeHidden();
+    expect(await page.locator('#toc-sec > ptx-t').evaluate((el) => getComputedStyle(el).display)).toBe('inline');
+    await expect(page.locator('#toc-sec')).not.toHaveAttribute('data-ptx-hide', '');
+    await expect(page.locator('#toc-sub ptx-t')).toContainText('【译】Embodied Planning');
+    await expect(page.locator('#toc-sub')).toBeVisible();
+
+    // 行内公式：整段一个译文，两个公式作为占位保留在译文里
+    await expect(page.locator('#math-p > ptx-t')).toHaveCount(1);
+    await expect(page.locator('#math-p')).toHaveAttribute('data-ptx-hide', '');
+    await expect(page.locator('#math-p > ptx-t math')).toHaveCount(2);
+
+    // grid 列表里 display:inline 的段落：隐藏原文后不退回双语；两端对齐时译文首行从行首开始
+    await expect(page.locator('#grid-p > ptx-t')).toContainText('【译】We construct ESTI-Bench');
+    await page.waitForTimeout(300); // 等排版检查（requestAnimationFrame）跑完
+    await expect(page.locator('#grid-p')).toHaveAttribute('data-ptx-hide', '');
+    const offset = await page.evaluate(() => {
+      const first = document.querySelector('#grid-p > ptx-t')!.getClientRects()[0]!;
+      return first.left - document.querySelector('#grid-div')!.getBoundingClientRect().left;
+    });
+    expect(Math.abs(offset)).toBeLessThan(2);
+  } finally {
+    await setSettings({ displayMode: 'bilingual' });
+  }
+  // 回到双语：隐藏标记全部撤掉
+  await expect(page.locator('#toc-link')).not.toHaveAttribute('data-ptx-hide-node', '');
+  await expect(page.locator('#toc-link')).toBeVisible();
+  await page.close();
+});
+
+test('仅译文模式：段落只占容器一部分、且含裸文字（「Parent item」+ 子列表）时藏不住，保持双语', async () => {
+  await setSettings({ displayMode: 'translation' });
+  const page = await context.newPage();
+  try {
+    await page.goto(`${server.url}/page.html`);
+    await toggle(page);
+    await expect(page.locator('#li-parent > ptx-t')).toContainText('【译】Parent item');
+    await expect(page.locator('#li-parent')).not.toHaveAttribute('data-ptx-hide', '');
+    await expect(page.locator('#li-parent > ptx-t')).not.toHaveClass(/ptx-replace/);
+    await expect(page.locator('#li-child')).toHaveAttribute('data-ptx-hide', '');
+  } finally {
+    await setSettings({ displayMode: 'bilingual' });
+  }
+  await page.close();
+});
+
 test('折叠起来（高度为 0）的内容：看不见就不翻译，也不会被「解除截断」撑开', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);

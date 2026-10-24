@@ -1,5 +1,5 @@
 /*
- * 注入到所有网页的样式。只作用于本扩展的自定义元素（ptx-*）和 data-ptx-hide 属性，
+ * 注入到所有网页的样式。只作用于本扩展的自定义元素（ptx-*）和 data-ptx-hide / data-ptx-hide-node 等属性，
  * 不影响页面原有元素的默认外观。
  */
 
@@ -115,15 +115,35 @@ ptx-t.ptx-error {
 
 /* ---------- 仅译文模式 ---------- */
 
-[data-ptx-hide] {
-  font-size: 0 !important;
-}
+/*
+ * 放进一个 CSS 层：!important 声明在层里的优先于不在层里的，越早声明的层越优先。
+ * 扩展注入的样式表排在页面样式表之前，这个层因此压得过页面层里的 !important
+ * （arXiv 在层里给标题写了 font-size: 1.7rem !important，不在层里时字号归不了零，原文藏不住）。
+ */
+@layer ptx-hide {
+  [data-ptx-hide] {
+    font-size: 0 !important;
+    /* 两端对齐时，字号为 0 的原文里的空格仍参与分配每行的空余，译文首行前会凭空多出一截空白 */
+    text-justify: none !important;
+  }
 
-[data-ptx-hide] > :not(ptx-t) {
-  display: none !important;
-}
+  [data-ptx-hide] > :not(ptx-t) {
+    display: none !important;
+  }
 
-[data-ptx-hide] > ptx-t {
-  display: inline !important;
-  margin: 0 !important;
+  [data-ptx-hide] > ptx-t {
+    display: inline !important;
+    margin: 0 !important;
+    text-justify: auto !important;
+  }
+
+  /* 段落只占容器一部分时（目录项后面跟着子目录）：只隐藏段落里的原文元素，译文以行内方式占原来的位置 */
+  [data-ptx-hide-node] {
+    display: none !important;
+  }
+
+  ptx-t.ptx-replace {
+    display: inline !important;
+    margin: 0 !important;
+  }
 }

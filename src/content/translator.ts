@@ -26,8 +26,10 @@ interface Paragraph extends Run {
   el?: HTMLElement;
   /** 仅译文模式下给译文设回的原文字号/行高（容器被设为 font-size:0） */
   font?: [size: string, lineHeight: string];
-  /** 隐藏原文前容器的宽度，用于检测隐藏后译文是否被挤成窄列 */
+  /** 隐藏原文前容器最宽那一行的宽度，用于检测隐藏后译文是否被挤成窄列 */
   widthBeforeHide?: number;
+  /** 仅译文模式下段落只占容器一部分时，被直接隐藏的原文元素（data-ptx-hide-node） */
+  hiddenNodes?: Element[];
   /** 这一段隐藏原文会挤坏排版，仅译文模式下也保持双语显示 */
   noHide?: boolean;
   /** 用户悬停关闭了这一段，之后不再自动补回 */
@@ -64,6 +66,11 @@ function classifierFor(settings: Settings): DomClassifier {
 }
 
 /** 元素是否渲染出来了（自身或祖先 display:none、visibility:hidden 时为否）；display:contents 没有盒子，按可见处理 */
+/** 元素最宽的一行：块级元素就是盒子宽度；行内元素跨多行时盒子只代表最后一行，要看每一行的片段 */
+function widestLine(el: Element): number {
+  return Math.max(0, ...Array.from(el.getClientRects(), (r) => r.width));
+}
+
 function isRendered(el: Element): boolean {
   if (!el.checkVisibility) return true;
   return el.checkVisibility({ visibilityProperty: true }) || getComputedStyle(el).display === 'contents';
@@ -82,7 +89,7 @@ function isClipping(el: Element): boolean {
 
 /**
  * 页面翻译控制器：段落登记 → 进入视口排队 → 批量请求 → 渲染；
- * 监听 DOM 变化处理动态内容。对页面只做「追加 <ptx-t> + data-ptx-hide 属性」两种修改。
+ * 监听 DOM 变化处理动态内容。对页面只做「追加 <ptx-t> + data-ptx-hide / data-ptx-hide-node 属性」两种修改。
  */
 export class PageTranslator {
   enabled = false;
@@ -700,23 +707,41 @@ export class PageTranslator {
     this.applyHide(p, false);
   }
 
-  /** 仅译文模式：容器 font-size:0 隐藏原文文本节点，CSS 隐藏原文子元素，译文显式设回字号 */
+  /**
+   * 仅译文模式：
+   * - 段落占满容器：容器 font-size:0 隐藏原文文本节点，CSS 隐藏原文子元素，译文显式设回字号；
+   * - 段落只占容器一部分（目录项后面跟着子目录、列表项编号后面跟着正文块）：容器里还有别的内容，不能整个藏。
+   *   段落里只有元素（链接、行内标签）时给这些元素打 data-ptx-hide-node 直接隐藏；有裸文字时不包裹节点就藏不住，保持双语。
+   */
   private applyHide(p: Paragraph, hide: boolean) {
     const container = p.container;
-    if (hide && p.whole && p.el && !p.noHide) {
-      if (!container.hasAttribute('data-ptx-hide')) {
-        const cs = getComputedStyle(container);
-        p.font = [cs.fontSize, cs.lineHeight];
-        p.widthBeforeHide = container.getBoundingClientRect().width;
-        container.setAttribute('data-ptx-hide', '');
+    if (hide && p.el && !p.noHide) {
+      if (p.whole) {
+        if (!container.hasAttribute('data-ptx-hide')) {
+          const cs = getComputedStyle(container);
+          p.font = [cs.fontSize, cs.lineHeight];
+          p.widthBeforeHide = widestLine(container);
+          container.setAttribute('data-ptx-hide', '');
+        }
+        if (p.font) {
+          p.el.style.fontSize = p.font[0];
+          p.el.style.lineHeight = p.font[1];
+        }
+        return;
       }
-      if (p.font) {
-        p.el.style.fontSize = p.font[0];
-        p.el.style.lineHeight = p.font[1];
+      const elements = p.nodes.filter((n): n is Element => n.nodeType === Node.ELEMENT_NODE);
+      const bareText = p.nodes.some((n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim());
+      if (elements.length > 0 && !bareText) {
+        for (const el of elements) el.setAttribute('data-ptx-hide-node', '');
+        p.hiddenNodes = elements;
+        p.el.classList.add('ptx-replace');
+        return;
       }
-      return;
     }
     container.removeAttribute('data-ptx-hide');
+    for (const el of p.hiddenNodes ?? []) el.removeAttribute('data-ptx-hide-node');
+    p.hiddenNodes = undefined;
+    p.el?.classList.remove('ptx-replace');
     p.el?.style.removeProperty('font-size');
     p.el?.style.removeProperty('line-height');
   }
@@ -734,7 +759,9 @@ export class PageTranslator {
    */
   private isSqueezed(p: Paragraph): boolean {
     if (!p.el || !p.font || !p.widthBeforeHide || p.widthBeforeHide < 40) return false;
-    const width = p.container.getBoundingClientRect().width;
+    // 比「最宽的一行」而不是容器盒子：行内容器（arXiv 列表项里 display:inline 的 <p>）的盒子只量得到最后一行，
+    // 按它判断会把排得好好的译文误判成被挤窄
+    const width = widestLine(p.el);
     const lineHeight = Number.parseFloat(p.font[1]) || Number.parseFloat(p.font[0]) * 1.4;
     return width < p.widthBeforeHide * 0.5 && p.el.getBoundingClientRect().height > lineHeight * 3;
   }
