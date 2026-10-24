@@ -1,10 +1,29 @@
+import { readdirSync } from 'node:fs';
+import path from 'node:path';
 import { defineConfig } from 'wxt';
 import { YOUTUBE_MATCHES } from './src/lib/youtube';
+
+/** PDF 阅读器在本机运行 pdf.js：CJK 字符映射、标准字体、图片解码 wasm 从 node_modules 复制进扩展（约 2.8 MB） */
+const PDFJS_DIR = path.resolve('node_modules/pdfjs-dist');
+const PDFJS_ASSETS: { dir: string; keep?: RegExp }[] = [
+  { dir: 'cmaps' },
+  { dir: 'standard_fonts' },
+  // 只要图片解码用的 wasm；quickjs-eval（执行 PDF 内嵌脚本）和 wasm 的 JS 回退版都不打包
+  { dir: 'wasm', keep: /^(jbig2|openjpeg|qcms_bg)\.wasm$|^LICENSE/ },
+];
 
 // 文档：https://wxt.dev/api/config.html
 export default defineConfig({
   srcDir: 'src',
   hooks: {
+    'build:publicAssets': (_wxt, files) => {
+      for (const { dir, keep } of PDFJS_ASSETS) {
+        for (const name of readdirSync(path.join(PDFJS_DIR, dir))) {
+          if (keep && !keep.test(name)) continue;
+          files.push({ absoluteSrc: path.join(PDFJS_DIR, dir, name), relativeDest: `pdfjs/${dir}/${name}` });
+        }
+      }
+    },
     // e2e 构建（`wxt build --mode e2e`）让 YouTube 脚本额外匹配本地 mock 服务，用仿 YouTube 的测试页验证字幕功能；
     // 网页内容脚本不匹配 preinstalled.html，模拟安装扩展前就打开的页面。正式构建的 manifest 不受影响。
     'build:manifestGenerated': (wxt, manifest) => {
@@ -22,6 +41,10 @@ export default defineConfig({
     name: '双语对照翻译',
     description: '网页双语对照翻译，使用你自己的大模型 API（OpenAI 兼容协议）',
     permissions: ['storage', 'contextMenus', 'scripting'],
+    // PDF 阅读器：pdf.js 用 wasm 解码 JPEG 2000 / JBIG2 图片，扩展页面默认 CSP 不允许实例化 wasm
+    content_security_policy: {
+      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+    },
     // 需要向任意 Base URL 发请求，内容脚本也要在所有页面运行
     host_permissions: ['<all_urls>'],
     commands: {
