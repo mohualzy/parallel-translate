@@ -20,6 +20,7 @@
 - WXT 的 `ContentScriptContext` 构造时就会通知旧实例失效，但它靠 `CustomEvent.detail` 识别「同一个脚本」：同一隔离世界里有效，早于新实例的 `main()`；跨隔离世界读不到 `detail`，孤儿脚本收不到。所以另外派发一个不带数据的普通事件，并且旧实例退场时不能删掉「正在翻译」标记（否则新实例读到时已经没了）。
 - Playwright 里 `chrome.runtime.reload()` 会把命令行加载的扩展直接卸掉，不会再加载回来（扩展页面返回 `ERR_BLOCKED_BY_CLIENT`，Service Worker 消失），所以「重载扩展」只能在日常 Chrome 里手动验证；E2E 用「对已有实例的页面再注入一次」覆盖交接逻辑。
 - 后台标签页（`visibilityState: hidden`）里 IntersectionObserver 不触发，懒翻译不会开始；通过 CDP 点击后台标签页里的悬浮球也没有反应。验证时用「立即翻译整页」或扩展消息代替。
+- Chrome 会冻结后台标签页（省内存，`tab.frozen === true`）。往冻结的标签页 `executeScript` 要等它被唤醒，几秒到更久都有可能。所以安装 / 更新时的注入必须并行，不能逐个 `await`：实测逐个注入时，排在冻结标签页后面的页面一分钟以上都没有脚本。
 
 ### 自动化测试只能用 Chromium
 
@@ -123,6 +124,12 @@
   - 文件查看页的代码是一行一个 `div.react-code-text`，不在 `<pre>`/`<code>` 里；容器 `.react-code-file-contents` 带 `aria-hidden="true"`，给读屏器的是另一份隐藏的 textarea。
   - 大量类名是 CSS Modules 哈希（`Box__0K17vj`、`list__GYi3Jn`），稳定的是 `data-testid`、`aria-label`、`aria-labelledby` 和 `react-*`、`blob-*` 这类老类名。
   - 未登录顶栏的下拉菜单用 `visibility:hidden` 收起。
-- Reddit：当前网络下 www.reddit.com 和 old.reddit.com 都返回「blocked by network security / network policy」，要求登录。
-- X：未登录时个人主页只显示「查看完整个人资料」的登录墙，没有推文；Playwright 的浏览器打开 x.com 直接返回错误状态码。
+- Reddit：
+  - 未登录时，当前网络下 www.reddit.com 和 old.reddit.com 都返回「blocked by network security / network policy」，登录后正常。
+  - 页面是多层 Shadow DOM：`shreddit-app` → `devvit-wrapper`（行内，只包一个 `<slot>`）→ `shreddit-feed` → `shreddit-post` / `shreddit-comment`，正文都是投影进 slot 的 light DOM。
+- X：
+  - 未登录时只有登录墙；Playwright 的浏览器打开 x.com 直接返回错误状态码。
+  - 登录后在日常 Chrome 的后台标签页里能渲染出前几条推文，滚动加载更多需要标签页在前台。
+  - 稳定选择器都在 `data-testid` 上（`tweetText`、`User-Name`、`UserCell`、`trend`），类名是 `css-146c3p1 r-xxx` 这类原子类。
+- web-access 的代理可能连到另一个浏览器：本机同时开着 Chrome 和 Edge 时，代理重启后可能连上 Edge（`/health` 里看 `browser.id`）。用之前先确认，连错了就结束 `cdp-proxy.mjs` 进程，再运行 `check-deps.mjs` 重连。
 

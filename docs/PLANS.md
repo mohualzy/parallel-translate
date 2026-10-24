@@ -76,7 +76,7 @@
 - [ ] AI 抽取文章术语，保证长文前后译法一致（最多 12 条候选）
 - [ ] 原生侧栏（`chrome.sidePanel`）：文本翻译
 - [x] 安装/更新后对已打开的标签页注入内容脚本（免刷新）— 已实现：安装/更新时主动注入 + 发消息失败时按需注入，新旧实例交接并保留翻译状态；E2E 与日常 Chrome 重载实测通过：[设计](specs/2026-10-23-inject-open-tabs-design.md) · [计划](plans/2026-10-23-inject-open-tabs.md)
-- [ ] 常见站点适配规则（X、Reddit、GitHub、Hacker News 等）— Hacker News、GitHub 已完成并实测；X、Reddit 待在已登录的浏览器里实测：[设计](specs/2026-10-23-site-rules-design.md) · [计划](plans/2026-10-23-site-rules.md)
+- [x] 常见站点适配规则（X、Reddit、GitHub、Hacker News 等）— 均已实测：HN、GitHub、X 用规则；Reddit 修通用识别后不需要规则：[设计](specs/2026-10-23-site-rules-design.md) · [计划](plans/2026-10-23-site-rules.md)
 - [x] 段落翻译失败的批量重试入口 — 已实现：点任一失败提示全部重试、弹窗按钮、带原因的失败提示：[设计](specs/2026-10-23-retry-failed-design.md) · [计划](plans/2026-10-23-retry-failed.md)
 
 ### P3 — 远期 / 视需求
