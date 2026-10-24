@@ -59,4 +59,11 @@
   验证：`pnpm vitest run tests/unit/pdf-color.test.ts` 通过。
 - [x] **11. 串排与统一字号**：`lib/pdf/typeset.ts` 的 `chainBlocks` / `flowLayout`（D52）；段首缩进两字；子集字体缺字时整词换系统字体；衬线按原字体名判断。
   验证：`pnpm vitest run tests/unit/pdf-typeset.test.ts` 通过。
+- [x] **12a. 第三轮反馈**（段首空格、文字与公式间距、标题不连贯、粗斜体丢失）：
+  - 居中判断要求两端都不齐；两端对齐标题的拆散文本项并回一行；单级章节号、公式编号单独处理；
+  - 正文斜体写的公式变量（S̃ₜ）连同重音、上下标成原子；
+  - 公式区域整体平移、串尾公式跟随（D54），脚注分隔线截断串、页码不参与；
+  - 行内粗体 / 斜体用 `<gN>`，中文斜体用楷体，粗体按字体名判断，中西文自动补空格（D55）。
+
+  验证：`pnpm vitest run tests/unit/pdf-layout.test.ts tests/unit/pdf-typeset.test.ts` 通过；`just check`、`just e2e`、`just e2e-live` 通过；DeepSeek 截图检查 2608.16806 第 1、2、3、5、6、7、8 页，1706.03762 第 1、4 页，1810.04805 第 1 页。
 - [x] **12. 回归**：`just check`、`just e2e`、`just e2e-live` 全部通过；用 DeepSeek 截图检查 2608.16806 第 1、2、3、7、8 页，1706.03762 第 1、4 页，1810.04805 第 1 页。
