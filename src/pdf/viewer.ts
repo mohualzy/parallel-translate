@@ -1,9 +1,10 @@
 import type { GlossaryEntry } from '@/lib/glossary';
 import { isProbablyInLanguage } from '@/lib/languages';
 import { sendToBackground, type PageContext } from '@/lib/messages';
+import { splitByColor } from '@/lib/pdf/color';
 import { analyzePage, type PdfBlock } from '@/lib/pdf/layout';
 import { getSettings, type Settings } from '@/lib/settings';
-import { drawTranslatedPage } from './draw';
+import { drawTranslatedPage, recordCoverage, type FontCoverage } from './draw';
 import type { PdfDocument } from './loader';
 import { extractText, renderPage, type Glyph } from './page-render';
 
@@ -51,6 +52,8 @@ export class PdfViewer {
   private translations = new Map<string, string>();
   private failures = new Map<string, string>();
   private terms: GlossaryEntry[] = [];
+  /** 各 PDF 字体画过的字符（跨页累积） */
+  private coverage: FontCoverage = new Map();
   private termsReady: Promise<void> = Promise.resolve();
   private near?: IntersectionObserver;
   private far?: IntersectionObserver;
@@ -152,7 +155,8 @@ export class PdfViewer {
     const { original, background, glyphs } = await renderPage(pdfPage, viewport);
     const { items, type3 } = await extractText(pdfPage, viewport);
     if (generation !== this.generation) return;
-    const blocks = analyzePage(items, viewport.width);
+    recordCoverage(this.coverage, glyphs);
+    const blocks = analyzePage(splitByColor(items, glyphs), viewport.width);
     const translated = document.createElement('canvas');
     translated.width = background.width;
     translated.height = background.height;
@@ -229,7 +233,7 @@ export class PdfViewer {
       const t = this.translations.get(b.text);
       if (t !== undefined) map.set(b, t);
     }
-    drawTranslatedPage(r.translated, r.background, r.glyphs, r.blocks, map);
+    drawTranslatedPage(r.translated, r.background, r.glyphs, r.blocks, map, this.coverage);
     // 译文画在 canvas 上，DOM 里读不到；把已翻译的段落数写在页面元素上，便于测试与排查
     page.el.dataset.translated = String(map.size);
   }

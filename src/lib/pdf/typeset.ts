@@ -1,13 +1,16 @@
 /**
- * PDF 译文排版：把译文（含 <xN/> 原子）断行、选字号，装进原段落的方框。
+ * PDF 译文排版：把译文（含 <xN/> 原子）断行、选字号；同一栏相邻的段落连成串依次排布，装进原来的区域。
  * 测量文字和原子宽度的函数由调用方注入（canvas measureText），这里只做纯计算，便于单测。
  */
 
 export type Token = { kind: 'text'; text: string } | { kind: 'atom'; index: number } | { kind: 'space' };
 
 const CJK = '\\u2E80-\\u9FFF\\uF900-\\uFAFF\\uFF00-\\uFFEF\\u3000-\\u303F';
-/** 原子占位 | 单个中日文字符或全角标点 | 一段连续的非空白、非中文（英文单词、数字、半角标点） | 空白 */
-const TOKEN = new RegExp(`<x(\\d+)\\s*\\/>|[${CJK}]|[^\\s<${CJK}]+|<|\\s+`, 'g');
+/**
+ * 原子占位 | 单个中日文字符或全角标点 | 破折号（——，整体不拆）| 一段连续的非空白、非中文（英文单词、数字、半角标点），
+ * 遇到斜杠可以断开（A/B/C 这类很长的并列名称不至于整串挪到下一行）| 空白
+ */
+const TOKEN = new RegExp(`<x(\\d+)\\s*\\/>|[${CJK}]|—+|[^\\s<${CJK}—/]+\\/?|\\/|<|\\s+`, 'g');
 
 /** 不能放在行首的标点（避头） */
 const NO_LINE_START = /^[，。、；：！？）」』》〉】”’…,.;:!?)\]}%]/;
@@ -38,8 +41,21 @@ export interface Measure {
   atom(index: number, scale: number): number;
 }
 
+/** 行首缩进（像素）：首行（段首缩进）与其余行（悬挂缩进） */
+export interface Indent {
+  first: number;
+  rest: number;
+}
+
 /** 按宽度断行：空白不放行首；避头的标点留在上一行（允许略微超出），避尾的开括号随下一个字移到新行 */
-export function breakLines(tokens: Token[], width: number, size: number, scale: number, measure: Measure): Token[][] {
+export function breakLines(
+  tokens: Token[],
+  width: number,
+  size: number,
+  scale: number,
+  measure: Measure,
+  indent: Indent = { first: 0, rest: 0 },
+): Token[][] {
   const lines: Token[][] = [[]];
   let used = 0;
   const widthOf = (t: Token) =>
@@ -54,7 +70,7 @@ export function breakLines(tokens: Token[], width: number, size: number, scale: 
       continue;
     }
     const w = widthOf(t);
-    const fits = used + w <= width || line.length === 0;
+    const fits = used + w <= width - (lines.length === 1 ? indent.first : indent.rest) || line.length === 0;
     const mustStay = t.kind === 'text' && NO_LINE_START.test(t.text);
     if (fits || mustStay) {
       line.push(t);
@@ -73,28 +89,135 @@ export function breakLines(tokens: Token[], width: number, size: number, scale: 
   return lines.filter((l) => l.length > 0);
 }
 
-export interface FitOptions {
-  width: number;
-  height: number;
+/** 版面上的一个矩形块（视口坐标；top 为首行字顶，bottom 为末行字底） */
+export interface FlowBox {
+  x0: number;
+  x1: number;
+  top: number;
+  bottom: number;
   /** 原文字号 */
   size: number;
-  /** 最小缩到原字号的多少 */
-  minScale?: number;
-  /** 行高（字号的倍数） */
-  lineHeight?: number;
+  /** 不和上下的块连成串（表格单元格） */
+  fixed?: boolean;
 }
 
-/** 从原字号往下试，直到行数 × 行高装进原块高度；装不下就用最小字号（允许溢出） */
-export function fitBlock(tokens: Token[], opts: FitOptions, measure: Measure): { size: number; lines: Token[][] } {
+/** 要写译文的块 */
+export interface FlowBlock extends FlowBox {
+  tokens: Token[];
+  measure: Measure;
+  /** 首行 / 其余行的缩进，以译文字号为单位（2 = 两个汉字） */
+  indentEm: Indent;
+}
+
+/** 译文块的排版结果 */
+export interface Placement {
+  /** 新的字顶位置 */
+  top: number;
+  size: number;
+  lines: Token[][];
+  indent: Indent;
+}
+
+export interface FlowOptions {
+  /** 行高（字号的倍数） */
+  lineHeight?: number;
+  /** 最小缩到原字号的多少 */
+  minScale?: number;
+  /** 同一页正文统一字号时，最多缩到多少（再小的只缩它自己那一串） */
+  pageMinScale?: number;
+}
+
+/**
+ * 把译文块连成「串」：同一栏里上下相邻、中间没有别的东西（公式、图片、保留原文的块）的块。
+ * 串内译文依次往下排，段距保持原文的段距，省下来的空间留在串的末尾，而不是散落在各段之间。
+ * obstacles 是保持原样的块，只用来截断串。
+ */
+export function chainBlocks(blocks: FlowBox[], obstacles: FlowBox[]): number[][] {
+  const boxes = [...blocks.map((box, i) => ({ box, i })), ...obstacles.map((box) => ({ box, i: -1 }))];
+  const pred = blocks.map((b) => {
+    if (b.fixed) return -1;
+    const s = b.size;
+    const above = boxes.filter(
+      ({ box: c }) => c !== b && Math.min(c.x1, b.x1) - Math.max(c.x0, b.x0) > s * 0.2 && c.top < b.top && c.bottom <= b.top + s * 0.5,
+    );
+    const p = above.sort((u, v) => v.box.bottom - u.box.bottom)[0];
+    if (!p || p.i < 0 || p.box.fixed) return -1;
+    // 上方并排着别的块（两栏之上的通栏块）：不知道该接哪一栏，不连
+    if (above.some((c) => c !== p && c.box.bottom > p.box.top + s * 0.2)) return -1;
+    // 中间隔着大段空白，多半是图片
+    if (b.top - p.box.bottom > Math.max(s, p.box.size) * 3) return -1;
+    return p.i;
+  });
+  // 一个块只接一个后继：通栏块下面的两栏各自独立
+  const successors = new Map<number, number>();
+  for (const p of pred) if (p >= 0) successors.set(p, (successors.get(p) ?? 0) + 1);
+  const next = new Map<number, number>();
+  pred.forEach((p, i) => {
+    if (p >= 0 && successors.get(p) === 1) next.set(p, i);
+  });
+  const linked = new Set(next.values());
+  const runs: number[][] = [];
+  blocks.forEach((_, i) => {
+    if (linked.has(i)) return;
+    const run = [i];
+    for (let j = next.get(i); j !== undefined; j = next.get(j)) run.push(j);
+    runs.push(run);
+  });
+  return runs;
+}
+
+/** 字顶到末行字底的高度，与 PdfBlock 的 top / bottom 口径一致 */
+const heightOf = (lines: number, size: number, lineHeight: number) => (lines === 0 ? 0 : size * (1 + (lines - 1) * lineHeight + 0.3));
+
+/**
+ * 整页译文排版：按串排布，每串选一个统一的缩放，从原字号往下试，直到整串装进原来的高度；
+ * 同一页多行正文的串再取同一个缩放，避免各段字号忽大忽小。
+ */
+export function flowLayout(blocks: FlowBlock[], obstacles: FlowBox[], opts: FlowOptions = {}): Placement[] {
   const lineHeight = opts.lineHeight ?? 1.32;
-  const min = opts.size * (opts.minScale ?? 0.6);
-  let size = opts.size;
-  let lines = breakLines(tokens, opts.width, size, 1, measure);
-  for (; size >= min; size -= opts.size * 0.025) {
-    lines = breakLines(tokens, opts.width, size, size / opts.size, measure);
-    // 多留 0.4 行的余量：原块高度按字顶到字底算，末行不需要完整行距
-    if (lines.length * size * lineHeight <= opts.height + size * 0.4) return { size, lines };
+  const minScale = opts.minScale ?? 0.6;
+  const pageMinScale = opts.pageMinScale ?? 0.8;
+
+  const place = (run: number[], scale: number) => {
+    const placed: Placement[] = [];
+    let cursor = 0;
+    run.forEach((i, k) => {
+      const b = blocks[i]!;
+      const size = b.size * scale;
+      const indent = { first: b.indentEm.first * size, rest: b.indentEm.rest * size };
+      const lines = breakLines(b.tokens, b.x1 - b.x0, size, scale, b.measure, indent);
+      let top = b.top;
+      if (k > 0) {
+        // 段距：原文两段之间超出正常行距（约 1.2 倍字号）的部分，按同样比例缩放
+        const prev = blocks[run[k - 1]!]!;
+        const extra = Math.max(0, b.top - prev.bottom + 0.1 * b.size) * scale;
+        top = cursor + (lineHeight - 1.3) * size + extra;
+      }
+      placed.push({ top, size, lines, indent });
+      cursor = top + heightOf(lines.length, size, lineHeight);
+    });
+    return { placed, end: cursor };
+  };
+
+  const steps = Math.round((1 - minScale) / 0.025);
+  const fitted = chainBlocks(blocks, obstacles).map((run) => {
+    const last = blocks[run.at(-1)!]!;
+    const limit = last.bottom + last.size * 0.3;
+    for (let k = 0; k <= steps; k++) {
+      const scale = 1 - k * 0.025;
+      const result = place(run, scale);
+      if (result.end <= limit || k === steps) return { run, scale, ...result };
+    }
+    throw new Error('unreachable');
+  });
+
+  // 多行正文的串取同一个缩放；单行的标题、图注标签不参与，免得一个挤的标签拖小整页
+  const body = fitted.filter((f) => f.placed.reduce((n, p) => n + p.lines.length, 0) >= 3);
+  const pageScale = Math.max(pageMinScale, Math.min(1, ...body.map((f) => f.scale)));
+  const out: Placement[] = new Array(blocks.length);
+  for (const f of fitted) {
+    const placed = f.scale > pageScale ? place(f.run, pageScale).placed : f.placed;
+    f.run.forEach((i, k) => (out[i] = placed[k]!));
   }
-  size = min;
-  return { size, lines: breakLines(tokens, opts.width, size, size / opts.size, measure) };
+  return out;
 }
