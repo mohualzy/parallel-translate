@@ -177,6 +177,11 @@
 - 无头 Chromium 148 带 PDF 查看器，打开 PDF 地址不会变成下载。
 - 恢复滚动位置要等工具栏渲染完：sticky 工具栏仍在文档流里，变高会把页面往下推。阅读器自己管理位置时设 `history.scrollRestoration = 'manual'`。
 - pdf.js `page.render` 默认（`intent: 'display'`）用 `requestAnimationFrame` 分段推进，后台标签页里不执行，渲染会一直等着；离屏导出用 `intent: 'print'`。`<dialog>` 的 `close` 事件在后台标签页里也可能被拖延，关键逻辑直接放在按钮点击里。
+- MathML `<math>` 的计算 display：行内是 `math`，行间是 `block math`。按 `display.startsWith('inline')` 判断行内会把行内公式当成块级。
+- 行内元素跨多行时，`getBoundingClientRect()` 只量得到最后一行的宽度（Chrome 实测），量「这段文字有多宽」要取 `getClientRects()` 里最宽的一行。
+- `!important` 声明的层叠顺序和普通声明相反：层里的优先于不在层里的，越早声明的层越优先。页面把样式放进 `@layer` 并写 `!important` 时，扩展不在层里的 `!important` 会输；扩展注入的样式表排在页面之前，把规则放进自己的层就能压过去。
+- 两端对齐（`text-align: justify`）时，字号为 0 的文字里的空格仍参与分配每行空余；`text-justify: none` 让它们不参与。
+- 探测真实网页的内容脚本行为：在系统临时目录写 Playwright 用例（`NODE_PATH` 指向项目的 `node_modules`，从项目里 import mock 服务），加载 e2e 构建、用 mock 翻译，不花 API 费用。
 - 中文字体族名因平台而异：Windows 上的 Noto 是 `Noto Serif SC` / `Noto Sans SC`，Linux 发行版常见 `Noto Serif CJK SC`，字体栈两种都要写。可用 PowerShell `System.Drawing.Text.PrivateFontCollection` 读字体文件的族名核对。
 - `queryLocalFonts()`（Local Font Access）在扩展页面可用，返回的族名是英文（`Microsoft YaHei`、`SimSun`），canvas 直接可用。未授权时不报错，返回空数组；授权状态用 `navigator.permissions.query({ name: 'local-fonts' })` 查。浏览器第一次枚举字体要约 3 秒，之后几十毫秒。
 - Playwright 给扩展页授权 `local-fonts` 不能带 `origin`（报「opaque origins」），要用不带 origin 的 `context.grantPermissions(['local-fonts'])`。
