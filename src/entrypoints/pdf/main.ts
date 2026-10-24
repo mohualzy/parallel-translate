@@ -3,6 +3,8 @@ import './style.css';
 import { CJK_PRESETS, cjkFontLabel, isPreset } from '@/lib/pdf/fonts';
 import { getProfile, PROFILES } from '@/lib/profiles';
 import { getSettings, onSettingsChanged, saveSettings } from '@/lib/settings';
+import { setupFindBar } from '@/pdf/find-bar';
+import { setupHighlightBar } from '@/pdf/highlight-bar';
 import { listCjkFonts, localFontsGranted, localFontsSupported } from '@/pdf/local-fonts';
 import { fetchPdf, openPdf } from '@/pdf/loader';
 import { PdfViewer, type ViewMode } from '@/pdf/viewer';
@@ -20,6 +22,7 @@ const retry = $<HTMLButtonElement>('#retry');
 const profileSelect = $<HTMLSelectElement>('#profile');
 const fontSelect = $<HTMLSelectElement>('#cjk-font');
 let viewer: PdfViewer | undefined;
+const findBar = setupFindBar(() => viewer);
 /** 当前的译文中文字体（设置值）；本机字体列表读取后缓存 */
 let cjkFont = '';
 let localFonts: string[] | undefined;
@@ -58,6 +61,7 @@ async function load(data: ArrayBuffer, fallbackTitle: string) {
     onError: showNotice,
     onNotice: showNotice,
   });
+  viewer.onTextChange = () => findBar.refresh();
   await viewer.init();
   // 打开文件期间可能换过字体，以下拉框为准
   viewer.setCjkFont(cjkFont);
@@ -186,6 +190,11 @@ function init() {
     }
   });
   void initFonts();
+  setupHighlightBar(pages, {
+    apply: (ranges, style) =>
+      void viewer?.setHighlight(ranges, style).catch((err: unknown) => showNotice(`保存强调失败：${err instanceof Error ? err.message : String(err)}`)),
+    hasHighlight: (ranges) => viewer?.hasHighlight(ranges) ?? false,
+  });
   retry.addEventListener('click', () => {
     notice.hidden = true;
     viewer?.retryFailed();

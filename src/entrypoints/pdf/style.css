@@ -79,42 +79,152 @@ body {
   padding: 16px;
 }
 
-/* 每页：左原文、右译文；尺寸由阅读器按容器宽度算好写进 --w / --h */
+/* 每页：左原文、右译文两个槽位；尺寸由阅读器按容器宽度算好写进 --w / --h */
 .page {
   display: flex;
   gap: 12px;
-  min-height: var(--h);
 }
 
-.page::before,
-.page:empty::after {
-  content: none;
-}
-
-.page:empty {
-  width: calc(var(--w) * 2 + 12px);
-  height: var(--h);
-}
-
-.pages[data-mode='translation'] .page:empty,
-.pages[data-mode='original'] .page:empty {
+.slot {
+  position: relative;
   width: var(--w);
-}
-
-.page canvas,
-.page:empty {
+  height: var(--h);
   background: #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
 }
 
-.page canvas {
-  width: var(--w);
-  height: var(--h);
+.slot canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.pages[data-mode='translation'] .page canvas.original,
-.pages[data-mode='original'] .page canvas.translated {
+.pages[data-mode='translation'] .slot.original,
+.pages[data-mode='original'] .slot.translated {
   display: none;
+}
+
+/* 译文页的透明文字层：只为选中、复制、Ctrl+F，文字本身画在画布上 */
+.text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  font-family: sans-serif;
+}
+
+.text-layer span {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  transform-origin: 0 0;
+  cursor: text;
+}
+
+/* 块末尾的 <br> 让复制出来的文字按段落分行（不能 display: none，否则复制时也被跳过）；块本身不占高度 */
+.tl-block {
+  height: 0;
+}
+
+.text-layer ::selection {
+  background: rgba(0, 110, 255, 0.28);
+}
+
+/* 查找命中框：在文字层下面，不挡选中 */
+.find-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.find-hit {
+  position: absolute;
+  border-radius: 2px;
+  background: rgba(255, 200, 0, 0.35);
+}
+
+.find-hit.current {
+  background: rgba(255, 120, 0, 0.45);
+  outline: 2px solid rgb(255, 120, 0);
+}
+
+.find-bar {
+  position: fixed;
+  top: 64px;
+  right: 24px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  font-size: 13px;
+}
+
+.find-bar input {
+  width: 200px;
+}
+
+.find-bar .btn {
+  padding: 2px 8px;
+}
+
+#find-count {
+  min-width: 52px;
+  text-align: center;
+}
+
+/* 选区工具条 */
+.hl-bar {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.hl-bar button {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.hl-bar button:hover {
+  border-color: var(--border);
+}
+
+.hl-bar .swatch {
+  width: 26px;
+  padding: 0;
+}
+
+.hl-bar .swatch::before {
+  content: '';
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: auto;
+  border-radius: 50%;
+  background: var(--c);
+}
+
+.hl-bar .underline {
+  text-decoration: underline 2px #e5484d;
+  text-underline-offset: 3px;
 }
 
 .empty {

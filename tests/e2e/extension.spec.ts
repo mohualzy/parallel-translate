@@ -1243,6 +1243,97 @@ test('PDF 阅读器：切换译文中文字体只重画、不重新请求翻译�
   await page.close();
 });
 
+test('PDF 阅读器：译文页文字可选中、复制；Ctrl+F 查找跨行的词；划词高亮保存在本机，刷新后仍在，可清除', async () => {
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const url = `chrome-extension://${extensionId}/pdf.html?file=${encodeURIComponent(`${server.url}/sample.pdf`)}`;
+  await page.goto(url);
+  await expect(page.locator('#progress')).toContainText('已翻译 2 / 2 页');
+  const layer = page.locator('.page[data-page="1"] .slot.translated .text-layer');
+  await expect(layer).toContainText('【译】A Study of Bilingual Reading');
+  // 译文画在画布上，文字层的透明文字让浏览器的查找能搜到
+
+  // Ctrl+F 打开阅读器自己的查找栏：标题在译文页上折成两行，跨行的短语也能找到
+  await page.keyboard.press('Control+f');
+  const find = page.locator('#find-input');
+  await expect(find).toBeFocused();
+  await find.fill('bilingual reading');
+  await expect(page.locator('#find-count')).toHaveText('1 / 1');
+  await expect(page.locator('.page[data-page="1"] .find-hit.current')).toHaveCount(2);
+  await find.fill('【译】');
+  await expect(page.locator('#find-count')).toHaveText('1 / 4');
+  await find.press('Enter');
+  await expect(page.locator('#find-count')).toHaveText('2 / 4');
+  await find.press('Shift+Enter');
+  await find.press('Shift+Enter');
+  await expect(page.locator('#find-count')).toHaveText('4 / 4');
+  await expect(page.locator('.page[data-page="2"] .find-hit.current')).toHaveCount(1);
+  await find.press('Escape');
+  await expect(page.locator('#find-bar')).toBeHidden();
+  await expect(page.locator('.find-hit')).toHaveCount(0);
+
+  /** 选中文字层里的标题（折成两行），松开鼠标，返回选中的文字 */
+  const selectTitle = () =>
+    page.evaluate(() => {
+      const span = [...document.querySelectorAll('.page[data-page="1"] .text-layer span')].find((s) => s.textContent!.includes('A Study'))!;
+      const range = document.createRange();
+      range.selectNodeContents(span.closest('.tl-block')!);
+      const sel = window.getSelection()!;
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.querySelector('#pages')!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      return sel.toString();
+    });
+  /** 标题那一行在译文画布上的黄色像素数 */
+  const yellow = () =>
+    page.evaluate(() => {
+      const span = [...document.querySelectorAll('.page[data-page="1"] .text-layer span')].find((s) => s.textContent!.includes('A Study'))!;
+      const canvas = document.querySelector<HTMLCanvasElement>('.page[data-page="1"] canvas.translated')!;
+      const c = canvas.getBoundingClientRect();
+      const r = span.getBoundingClientRect();
+      const k = canvas.width / c.width;
+      const d = canvas.getContext('2d')!.getImageData((r.left - c.left) * k, (r.top - c.top) * k, r.width * k, r.height * k).data;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i]! > 200 && d[i + 1]! > 180 && d[i + 2]! < 140) n++;
+      return n;
+    });
+
+  // 查找时滚到了第 2 页：先滚回顶部，等滚动事件派发完（滚动会收起工具条）再选中
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
+  expect(await yellow()).toBe(0);
+  expect(await selectTitle()).toContain('【译】A Study of Bilingual Reading');
+  const bar = page.locator('#hl-bar');
+  await expect(bar).toBeVisible();
+  await expect(bar.getByRole('button', { name: '清除' })).toBeHidden();
+  await bar.locator('[data-style="yellow"]').click();
+  await expect(bar).toBeHidden();
+  await expect.poll(yellow).toBeGreaterThan(100);
+  const stored = () =>
+    sw.evaluate(async () => Object.entries(await chrome.storage.local.get(null)).filter(([k]) => k.startsWith('pdfHighlights:')).map(([, v]) => v as { quote: string; style: string }[]));
+  await expect.poll(stored).toEqual([[expect.objectContaining({ quote: '【译】A Study of Bilingual Reading', style: 'yellow' })]]);
+
+  // 换字体会重新断行、重画，强调仍落在原来的文字上
+  await page.locator('#cjk-font').selectOption('@hei');
+  await expect.poll(yellow).toBeGreaterThan(100);
+  await page.locator('#cjk-font').selectOption('');
+
+  await page.reload();
+  await expect(page.locator('#progress')).toContainText('已翻译 2 / 2 页');
+  await expect.poll(yellow).toBeGreaterThan(100);
+
+  await selectTitle();
+  await expect(bar.getByRole('button', { name: '清除' })).toBeVisible();
+  await bar.getByRole('button', { name: '清除' }).click();
+  await expect.poll(yellow).toBe(0);
+  await expect.poll(stored).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
 test('PDF 阅读器：弹窗在 PDF 页面上显示「用双语阅读器打开此 PDF」，点击后本标签页换成阅读器', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/fake.pdf`);

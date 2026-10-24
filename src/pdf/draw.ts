@@ -1,6 +1,8 @@
 import { sameFont } from '@/lib/pdf/color';
 import { cjkStack } from '@/lib/pdf/fonts';
+import type { HighlightStyle } from '@/lib/pdf/highlights';
 import { BOLD_FONT, ITALIC_FONT, SANS_FONT, type PdfBlock, type PdfTextItem } from '@/lib/pdf/layout';
+import { blockKeys, keptBlockText, rangeRects, type PageTextBlock, type TextPiece } from '@/lib/pdf/page-text';
 import { flowLayout, tokenize, tokenWidth, type FlowBox, type Measure, type Move, type Placement, type Token } from '@/lib/pdf/typeset';
 import type { Glyph } from './page-render';
 
@@ -136,6 +138,9 @@ export function isUnchanged(block: PdfBlock, translation: string): boolean {
 /** 一个要写译文的块：原文字形、原子字形、样式、token 与测量函数 */
 interface Job {
   block: PdfBlock;
+  /** 显示文本（token 依次拼接，原子用原文字符）与每个 token 在其中的区间 */
+  text: string;
+  offsets: Map<Token, [number, number]>;
   own: Set<Glyph>;
   atomGlyphs: Glyph[][];
   atomBox: { x0: number; width: number }[];
@@ -198,7 +203,15 @@ function makeJob(block: PdfBlock, translation: string, plain: Glyph[], coverage:
     atom: (index, scale) => (atomBox[index]?.width ?? 0) * scale,
   };
   const tokens = tokenize(translation, block.atoms.length, block.marks.length);
-  return { block, own, atomGlyphs, atomBox, tokens, measure, fontFor, fill: style.fill };
+  // 显示文本和断行无关：断行丢掉的行末空格也在里面，换字体后偏移不变（强调靠它定位）
+  let text = '';
+  const offsets = new Map<Token, [number, number]>();
+  for (const t of tokens) {
+    const s = t.kind === 'space' ? ' ' : t.kind === 'atom' ? block.atoms[t.index]!.items.map((i) => i.str).join('') : t.text;
+    offsets.set(t, [text.length, text.length + s.length]);
+    text += s;
+  }
+  return { block, text, offsets, own, atomGlyphs, atomBox, tokens, measure, fontFor, fill: style.fill };
 }
 
 /** 记录各字体实际画过的字符（跨页累积），用来判断译文里的英文能不能用 PDF 自己的字体 */
@@ -214,12 +227,49 @@ export function recordCoverage(coverage: FontCoverage, glyphs: Glyph[]): void {
 /** 整体平移的区域左右多带几个像素：公式常比正文栏略宽 */
 const SLOT_PAD = 3;
 
+/** 要画的强调：块标识 → 显示文本里的区间 */
+export type HighlightMarks = Map<string, { start: number; end: number; style: HighlightStyle }[]>;
+
+const HIGHLIGHT_COLORS: Record<Exclude<HighlightStyle, 'underline'>, string> = {
+  yellow: '#ffe45c',
+  green: '#a8eb9a',
+  blue: '#a5d4ff',
+  pink: '#ffb3d1',
+};
+const UNDERLINE_COLOR = '#e5484d';
+
+/**
+ * 画强调：高亮用 multiply 叠在已画好的页面上（白底变色、黑字不变，不用管先后顺序），下划线画在基线下方。
+ * 在 drawTranslatedPage 之后调用：要先有它返回的显示文本，才能定位强调。
+ */
+export function drawHighlights(ctx: CanvasRenderingContext2D, blocks: PageTextBlock[], marks: HighlightMarks) {
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  for (const b of blocks) {
+    for (const m of marks.get(b.key) ?? []) {
+      for (const r of rangeRects(b, m.start, m.end)) {
+        if (m.style === 'underline') {
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.fillStyle = UNDERLINE_COLOR;
+          ctx.fillRect(r.x, r.baseline + r.size * 0.14, r.w, Math.max(1, r.size * 0.08));
+        } else {
+          ctx.globalCompositeOperation = 'multiply';
+          ctx.fillStyle = HIGHLIGHT_COLORS[m.style];
+          ctx.fillRect(r.x, r.y, r.w, r.h);
+        }
+      }
+    }
+  }
+  ctx.restore();
+}
+
 /**
  * 画译文页：底图 → 清空要写译文的块 → 画回其余所有字形（保留块、未翻译块、旋转文字）
  * → 把夹在译文之间的公式区域整体平移 → 写译文。
  * translations 里没有的块（还没翻译、不翻译、翻译失败）都按原样显示。
  * 同一栏相邻的译文块连成串依次排布（flowLayout），段距一致，省下的空间留在串末。
  * cjkFont 是设置里的译文中文字体（lib/pdf/fonts.ts），空字符串为自动。
+ * 返回每块的显示文本与位置（文字层、强调定位用），顺序同 blocks。
  */
 export function drawTranslatedPage(
   target: HTMLCanvasElement,
@@ -229,7 +279,7 @@ export function drawTranslatedPage(
   translations: Map<PdfBlock, string>,
   coverage: FontCoverage,
   cjkFont: string,
-): void {
+): PageTextBlock[] {
   const ctx = target.getContext('2d')!;
   const bg = background.getContext('2d', { willReadFrequently: true })!;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -274,7 +324,18 @@ export function drawTranslatedPage(
   for (const g of glyphs) if (!claimed.has(g)) drawGlyph(ctx, g);
   moveSlots(ctx, bg, moves);
 
-  jobs.forEach((job, k) => drawBlock(ctx, job, placements[k]!));
+  const pieces = new Map(jobs.map((job, k) => [job.block, drawBlock(ctx, job, placements[k]!)]));
+  const textOf = new Map(jobs.map((job) => [job.block, job.text]));
+
+  const keys = blockKeys(blocks);
+  const pageText = blocks.map((b, i): PageTextBlock => {
+    const own = pieces.get(b);
+    if (own) return { key: keys[i]!, text: textOf.get(b)!, pieces: own, translated: true };
+    // 保留原文的块落在整体平移的公式区域里时，跟着平移
+    const m = moves.find((mv) => b.x0 >= mv.x0 - SLOT_PAD && b.x1 <= mv.x1 + SLOT_PAD && b.top >= mv.top - 1 && b.bottom <= mv.bottom + 1);
+    return keptBlockText(b, keys[i]!, m?.dy ?? 0);
+  });
+  return pageText.filter((b) => b.pieces.length > 0);
 }
 
 /** 公式区域整体平移：先把所有原位置清成底色（按底图取色），再从快照里把各区域画到新位置（区域之间可能重叠） */
@@ -297,8 +358,10 @@ function moveSlots(ctx: CanvasRenderingContext2D, bg: CanvasRenderingContext2D, 
   for (const r of rects) ctx.drawImage(snapshot, r.x, r.y, r.w, r.h, r.x, r.y + r.dy, r.w, r.h);
 }
 
-function drawBlock(ctx: CanvasRenderingContext2D, job: Job, p: Placement) {
+/** 写一块译文，返回每个 token 的位置 */
+function drawBlock(ctx: CanvasRenderingContext2D, job: Job, p: Placement): TextPiece[] {
   const { block, measure } = job;
+  const pieces: TextPiece[] = [];
   const scale = p.size / block.size;
   const width = block.x1 - block.x0;
   const widthOf = (t: Token) => tokenWidth(t, p.size, scale, measure);
@@ -319,7 +382,10 @@ function drawBlock(ctx: CanvasRenderingContext2D, job: Job, p: Placement) {
         ctx.fillStyle = job.fill;
         ctx.fillText(text, x, baseline);
       }
+      const [start, end] = job.offsets.get(t)!;
+      if (end > start) pieces.push({ start, end, x, w: widthOf(t), baseline, size: p.size, line: i });
       x += widthOf(t);
     }
   });
+  return pieces;
 }

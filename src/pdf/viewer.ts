@@ -1,12 +1,16 @@
 import type { GlossaryEntry } from '@/lib/glossary';
+import { addHighlight, locate, removeRange, type HighlightStyle, type PdfHighlight, type TextRange } from '@/lib/pdf/highlights';
+import type { PageTextBlock } from '@/lib/pdf/page-text';
 import { isProbablyInLanguage } from '@/lib/languages';
 import { sendToBackground, type PageContext } from '@/lib/messages';
 import { splitByColor } from '@/lib/pdf/color';
 import { analyzePage, type PdfBlock } from '@/lib/pdf/layout';
 import { getSettings, type Settings } from '@/lib/settings';
-import { drawTranslatedPage, recordCoverage, type FontCoverage } from './draw';
+import { drawHighlights, drawTranslatedPage, recordCoverage, type FontCoverage, type HighlightMarks } from './draw';
+import { loadHighlights, saveHighlights } from './highlight-store';
 import type { PdfDocument } from './loader';
 import { extractText, renderPage, type Glyph } from './page-render';
+import { renderTextLayer } from './text-layer';
 
 /** 正文达到这个字数才抽取文章术语（同网页翻译），送去抽取的正文最多这么长 */
 const TERMS_MIN_CHARS = 3000;
@@ -19,6 +23,10 @@ export type ViewMode = 'bilingual' | 'translation' | 'original';
 interface PageState {
   index: number;
   el: HTMLElement;
+  /** 原文页、译文页两个槽位；释放时只删画布，译文页的文字层留着（看过的页 Ctrl+F 都搜得到） */
+  originalSlot: HTMLElement;
+  translatedSlot: HTMLElement;
+  layer: HTMLElement;
   /** 页面在缩放 1 时的尺寸（PDF 点） */
   width: number;
   height: number;
@@ -58,6 +66,13 @@ export class PdfViewer {
   private near?: IntersectionObserver;
   private far?: IntersectionObserver;
   private generation = 0;
+  /** 划词强调（按文档保存）与各页最近一次画出的文字几何（定位强调用） */
+  private highlights: PdfHighlight[] = [];
+  /** 各页最近一次画出的文字几何与画布尺寸；画布释放后仍保留，查找、强调定位都用它 */
+  private pageTexts = new Map<number, { blocks: PageTextBlock[]; width: number; height: number }>();
+  /** 某页的文字重画了（译文到达、换字体、缩放）：查找栏据此刷新命中 */
+  onTextChange?: (page: number) => void;
+  private docId = '';
   zoom = 1;
   mode: ViewMode = 'bilingual';
   profile = 'general';
@@ -72,14 +87,24 @@ export class PdfViewer {
 
   async init() {
     this.settings = await getSettings();
+    this.docId = this.doc.fingerprints[0] ?? this.title;
+    this.highlights = await loadHighlights(this.docId).catch(() => []);
     for (let i = 1; i <= this.doc.numPages; i++) {
       const page = await this.doc.getPage(i);
       const vp = page.getViewport({ scale: 1 });
       const el = document.createElement('div');
       el.className = 'page';
       el.dataset.page = String(i);
+      const originalSlot = document.createElement('div');
+      originalSlot.className = 'slot original';
+      const translatedSlot = document.createElement('div');
+      translatedSlot.className = 'slot translated';
+      const layer = document.createElement('div');
+      layer.className = 'text-layer';
+      translatedSlot.append(layer);
+      el.append(originalSlot, translatedSlot);
       this.container.append(el);
-      this.pages.push({ index: i, el, width: vp.width, height: vp.height, done: false, failed: 0 });
+      this.pages.push({ index: i, el, originalSlot, translatedSlot, layer, width: vp.width, height: vp.height, done: false, failed: 0 });
     }
     const firstText = await this.collectText(5);
     this.autoProfile = /\bAbstract\b|arXiv/i.test(firstText.slice(0, 4000)) ? 'paper' : 'general';
@@ -137,7 +162,8 @@ export class PdfViewer {
   }
 
   private release(page: PageState) {
-    page.el.replaceChildren();
+    page.originalSlot.replaceChildren();
+    page.translatedSlot.querySelector('canvas')?.remove();
     page.rendered = undefined;
     page.rendering = undefined;
   }
@@ -164,7 +190,9 @@ export class PdfViewer {
       [original, 'original'],
       [translated, 'translated'],
     ] as const) canvas.className = kind;
-    page.el.replaceChildren(original, translated);
+    page.originalSlot.replaceChildren(original);
+    page.translatedSlot.querySelector('canvas')?.remove();
+    page.translatedSlot.prepend(translated);
     page.rendered = { scale: viewport.scale, background, glyphs, blocks, translated };
     this.redraw(page);
     if (type3) {
@@ -233,7 +261,11 @@ export class PdfViewer {
       const t = this.translations.get(b.text);
       if (t !== undefined) map.set(b, t);
     }
-    drawTranslatedPage(r.translated, r.background, r.glyphs, r.blocks, map, this.coverage, this.settings.pdfCjkFont);
+    const pageText = drawTranslatedPage(r.translated, r.background, r.glyphs, r.blocks, map, this.coverage, this.settings.pdfCjkFont);
+    this.pageTexts.set(page.index, { blocks: pageText, width: r.translated.width, height: r.translated.height });
+    drawHighlights(r.translated.getContext('2d')!, pageText, this.marksFor(page.index, pageText));
+    renderTextLayer(page.layer, pageText, r.translated.width, r.translated.height);
+    this.onTextChange?.(page.index);
     // 译文画在 canvas 上，DOM 里读不到；把已翻译的段落数写在页面元素上，便于测试与排查
     page.el.dataset.translated = String(map.size);
   }
@@ -257,6 +289,54 @@ export class PdfViewer {
       p.failed = 0;
     }
     this.layoutPages();
+  }
+
+  /** 本页要画的强调：按块当前的显示文本定位，定位不到的暂不画 */
+  private marksFor(index: number, pageText: PageTextBlock[]): HighlightMarks {
+    const marks: HighlightMarks = new Map();
+    for (const h of this.highlights) {
+      if (h.page !== index) continue;
+      const text = pageText.find((b) => b.key === h.key)?.text;
+      const at = text === undefined ? undefined : locate(h, text);
+      if (!at) continue;
+      let list = marks.get(h.key);
+      if (!list) marks.set(h.key, (list = []));
+      list.push({ ...at, style: h.style });
+    }
+    return marks;
+  }
+
+  private textOf = (page: number, key: string) => this.pageTexts.get(page)?.blocks.find((b) => b.key === key)?.text;
+
+  /** 看过的各页文字，按页码排序 */
+  texts(): [number, { blocks: PageTextBlock[]; width: number; height: number }][] {
+    return [...this.pageTexts.entries()].sort((a, b) => a[0] - b[0]);
+  }
+
+  /** 第 index 页的译文槽位（叠命中框、滚动定位用） */
+  translatedSlot(index: number): HTMLElement | undefined {
+    return this.pages[index - 1]?.translatedSlot;
+  }
+
+  /** 选区里是否已有强调（工具条据此显示「清除」） */
+  hasHighlight(ranges: TextRange[]): boolean {
+    return ranges.some((r) =>
+      this.highlights.some((h) => {
+        if (h.page !== r.page || h.key !== r.key) return false;
+        const text = this.textOf(h.page, h.key);
+        const at = text === undefined ? undefined : locate(h, text);
+        return at !== undefined && at.start < r.end && at.end > r.start;
+      }),
+    );
+  }
+
+  /** 给选区加强调（style）或清除选区里的强调（undefined），保存后重画涉及的页 */
+  async setHighlight(ranges: TextRange[], style: HighlightStyle | undefined) {
+    for (const r of ranges) {
+      this.highlights = style === undefined ? removeRange(this.highlights, r, this.textOf) : addHighlight(this.highlights, r, style, this.textOf);
+    }
+    for (const index of new Set(ranges.map((r) => r.page))) this.redraw(this.pages[index - 1]!);
+    await saveHighlights(this.docId, this.highlights);
   }
 
   /** 换译文中文字体：只用已有译文重画已渲染的页，不重新渲染 PDF、不重新请求翻译 */
