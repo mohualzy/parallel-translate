@@ -5,6 +5,7 @@ import { fileFromReaderUrl } from '@/lib/pdf/auto-open';
 import { CJK_PRESETS, cjkFontLabel, isPreset } from '@/lib/pdf/fonts';
 import { getProfile, PROFILES } from '@/lib/profiles';
 import { getSettings, onSettingsChanged, saveSettings } from '@/lib/settings';
+import { exportFileName, exportPdf, type ExportMode } from '@/pdf/export';
 import { setupFindBar } from '@/pdf/find-bar';
 import { setupHighlightBar } from '@/pdf/highlight-bar';
 import { setupHighlightPanel } from '@/pdf/highlight-panel';
@@ -89,6 +90,7 @@ async function load(data: ArrayBuffer, fallbackTitle: string, from = fallbackTit
   // 打开文件期间可能换过字体，以下拉框为准
   viewer.setCjkFont(cjkFont);
   renderControls();
+  $<HTMLButtonElement>('#export').disabled = false;
   await viewer.restorePosition();
 }
 
@@ -181,6 +183,56 @@ async function openFile(file: File) {
   }
 }
 
+/** 导出 PDF（D63）：选格式 → 逐页渲染、补翻 → 下载；导出中按钮变成「取消导出」 */
+function setupExport() {
+  const button = $<HTMLButtonElement>('#export');
+  const dialog = $<HTMLDialogElement>('#export-dialog');
+  let running = false;
+  let cancelled = false;
+  button.addEventListener('click', () => {
+    if (!viewer) return;
+    if (running) {
+      cancelled = true;
+      return;
+    }
+    const left = viewer.untranslatedPages();
+    $('#export-info').textContent =
+      left === 0 ? `共 ${viewer.pageCount} 页，都已翻译。` : `共 ${viewer.pageCount} 页，还有 ${left} 页没翻译，导出时会先翻译这些页（产生 API 费用）。`;
+    dialog.showModal();
+  });
+  // 按钮直接处理点击，不等对话框的 close 事件：它异步派发，后台标签页里会被拖延
+  dialog.addEventListener('click', async (e) => {
+    const mode = (e.target as HTMLElement).closest<HTMLElement>('[data-mode]')?.dataset.mode as ExportMode | 'cancel' | undefined;
+    if (!mode) return;
+    dialog.close();
+    const v = viewer;
+    if (!v || mode === 'cancel' || running) return;
+    running = true;
+    cancelled = false;
+    button.textContent = '取消导出';
+    try {
+      const result = await exportPdf(v, mode, docMeta.title, (done, total) => (progress.textContent = `正在导出 ${done} / ${total} 页…`), () => cancelled);
+      if (!result) {
+        progress.textContent = '已取消导出';
+        return;
+      }
+      const url = URL.createObjectURL(new Blob([result.bytes as BlobPart], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = exportFileName(docMeta.title, mode);
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      progress.textContent = '已导出';
+      if (result.failed > 0) showNotice(`有 ${result.failed} 段翻译失败，导出的文件里这些段落是原文`);
+    } catch (err) {
+      showNotice(`导出失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      running = false;
+      button.textContent = '导出 PDF';
+    }
+  });
+}
+
 function init() {
   $('#mode').addEventListener('click', (e) => {
     const value = (e.target as HTMLElement).closest('button')?.dataset.value as ViewMode | undefined;
@@ -219,6 +271,7 @@ function init() {
       void viewer?.setHighlight(ranges, style).catch((err: unknown) => showNotice(`保存强调失败：${err instanceof Error ? err.message : String(err)}`)),
     hasHighlight: (ranges) => viewer?.hasHighlight(ranges) ?? false,
   });
+  setupExport();
   retry.addEventListener('click', () => {
     notice.hidden = true;
     viewer?.retryFailed();

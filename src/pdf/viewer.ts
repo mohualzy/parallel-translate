@@ -279,8 +279,8 @@ export class PdfViewer {
   }
 
   /** 这一页需要翻译的块：不保留原文、有字母、不是目标语言 */
-  private pending(page: PageState): PdfBlock[] {
-    return (page.rendered?.blocks ?? []).filter((b) => {
+  private pending(blocks: PdfBlock[]): PdfBlock[] {
+    return blocks.filter((b) => {
       if (b.keep || this.translations.has(b.text)) return false;
       const plain = b.text.replace(/<x\d+\/>/g, '');
       return !isProbablyInLanguage(plain, this.settings.targetLang);
@@ -289,7 +289,20 @@ export class PdfViewer {
 
   private async translatePage(page: PageState, generation: number) {
     await this.termsReady;
-    const todo = this.pending(page);
+    const todo = this.pending(page.rendered?.blocks ?? []);
+    await this.translateBlocks(todo, () => {
+      if (generation === this.generation) this.redraw(page);
+    });
+    if (generation !== this.generation) return;
+    page.failed = todo.filter((b) => this.failures.has(b.text) && !this.translations.has(b.text)).length;
+    page.done = true;
+    this.reportProgress();
+    if (page.failed > 0) this.events.onError(`第 ${page.index} 页有 ${page.failed} 段翻译失败：${this.failures.get(todo.find((b) => this.failures.has(b.text))!.text)}`);
+  }
+
+  /** 按批翻译这些块（阅读和导出共用），结果记进 translations / failures；每批返回后调 onBatch */
+  private async translateBlocks(todo: PdfBlock[], onBatch?: () => void) {
+    await this.termsReady;
     const context: PageContext = { title: this.title, summary: '', profile: this.profile, terms: this.terms, fixedLayout: true };
     const batches: PdfBlock[][] = [];
     let chars = 0;
@@ -315,14 +328,56 @@ export class PdfViewer {
         } catch (err) {
           for (const b of batch) this.failures.set(b.text, err instanceof Error ? err.message : String(err));
         }
-        if (generation === this.generation) this.redraw(page);
+        onBatch?.();
       }),
     );
-    if (generation !== this.generation) return;
-    page.failed = todo.filter((b) => this.failures.has(b.text) && !this.translations.has(b.text)).length;
-    page.done = true;
-    this.reportProgress();
-    if (page.failed > 0) this.events.onError(`第 ${page.index} 页有 ${page.failed} 段翻译失败：${this.failures.get(todo.find((b) => this.failures.has(b.text))!.text)}`);
+  }
+
+  /** 还没翻译完的页数（导出前提示要补翻多少） */
+  untranslatedPages(): number {
+    return this.pages.filter((p) => !p.done).length;
+  }
+
+  /** 页面尺寸（PDF 点），导出时按它定页面大小 */
+  pageSize(index: number): { width: number; height: number } {
+    const p = this.pages[index - 1]!;
+    return { width: p.width, height: p.height };
+  }
+
+  get pageCount(): number {
+    return this.pages.length;
+  }
+
+  /**
+   * 导出用（D63）：按固定清晰度离屏渲染第 index 页，补翻缺的段落，画上译文和强调。
+   * 和当前缩放、视口无关；调用方转成图片后即可丢掉画布。failed 是这一页翻译失败的段数。
+   */
+  async renderForExport(index: number, scale: number): Promise<{ original: HTMLCanvasElement; translated: HTMLCanvasElement; failed: number }> {
+    const pdfPage = await this.doc.getPage(index);
+    const viewport = pdfPage.getViewport({ scale });
+    // print：不靠 requestAnimationFrame 推进渲染，导出时切到别的标签页也不会卡住
+    const { original, background, glyphs } = await renderPage(pdfPage, viewport, 'print');
+    const { items, type3 } = await extractText(pdfPage, viewport);
+    recordCoverage(this.coverage, glyphs);
+    const translated = document.createElement('canvas');
+    translated.width = background.width;
+    translated.height = background.height;
+    if (type3) {
+      // Type3 字体去不掉原字形：和阅读时一样只给原文
+      translated.getContext('2d')!.drawImage(original, 0, 0);
+      return { original, translated, failed: 0 };
+    }
+    const blocks = analyzePage(splitByColor(items, glyphs), viewport.width);
+    const todo = this.pending(blocks);
+    await this.translateBlocks(todo);
+    const map = new Map<PdfBlock, string>();
+    for (const b of blocks) {
+      const t = this.translations.get(b.text);
+      if (t !== undefined) map.set(b, t);
+    }
+    const pageText = drawTranslatedPage(translated, background, glyphs, blocks, map, this.coverage, this.settings.pdfCjkFont);
+    drawHighlights(translated.getContext('2d')!, pageText, this.marksFor(index, pageText));
+    return { original, translated, failed: todo.filter((b) => !this.translations.has(b.text)).length };
   }
 
   private redraw(page: PageState) {

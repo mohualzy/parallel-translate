@@ -1452,6 +1452,53 @@ test('PDF 阅读器：记住阅读位置，再次打开回到上次读到的页�
   await sw.evaluate(() => chrome.storage.local.remove('pdfPositions'));
 });
 
+test('PDF 导出：仅译文 / 双语并排两种格式，下载的文件是含 JPEG 页面的 PDF，页面尺寸对应原文', async () => {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/pdf.html?file=${encodeURIComponent(`${server.url}/sample.pdf`)}`);
+  await expect(page.locator('#progress')).toContainText('已翻译 2 / 2 页');
+  const readDownload = async (mode: string) => {
+    await page.locator('#export').click();
+    const dialog = page.locator('#export-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('#export-info')).toHaveText('共 2 页，都已翻译。');
+    const [download] = await Promise.all([page.waitForEvent('download'), dialog.getByRole('button', { name: mode }).click()]);
+    const chunks: Buffer[] = [];
+    for await (const chunk of await download.createReadStream()) chunks.push(chunk as Buffer);
+    const buffer = Buffer.concat(chunks);
+    return { name: download.suggestedFilename(), buffer, text: buffer.toString('latin1') };
+  };
+  const mediaBoxes = (text: string) => [...text.matchAll(/\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/g)].map((m) => [Number(m[1]), Number(m[2])]);
+
+  const translation = await readDownload('仅译文');
+  expect(translation.name).toBe('sample.pdf-译文.pdf');
+  expect(translation.text.startsWith('%PDF-')).toBe(true);
+  expect(mediaBoxes(translation.text)).toEqual([
+    [612, 792],
+    [612, 792],
+  ]);
+  expect(translation.text.match(/\/Filter \/DCTDecode/g)).toHaveLength(2);
+  await expect(page.locator('#progress')).toHaveText('已导出');
+
+  const bilingual = await readDownload('双语并排');
+  expect(bilingual.name).toBe('sample.pdf-双语.pdf');
+  // 左原文、右译文：页宽 = 两页 + 18 点间隔，每页两张图
+  expect(mediaBoxes(bilingual.text)).toEqual([
+    [1242, 792],
+    [1242, 792],
+  ]);
+  expect(bilingual.text.match(/\/Filter \/DCTDecode/g)).toHaveLength(4);
+
+  // 导出的文件能被 pdf.js 正常打开渲染：用阅读器自己的「打开本地文件」载入
+  const reopened = await context.newPage();
+  await reopened.goto(`chrome-extension://${extensionId}/pdf.html`);
+  await reopened.locator('#file').setInputFiles({ name: 'exported.pdf', mimeType: 'application/pdf', buffer: bilingual.buffer });
+  await expect(reopened.locator('#doc-title')).toHaveText('sample.pdf');
+  await expect(reopened.locator('.page')).toHaveCount(2);
+  await expect(reopened.locator('.page[data-page="1"] canvas.original')).toBeVisible();
+  await reopened.close();
+  await page.close();
+});
+
 test('PDF 自动打开：开关打开后，不带 .pdf 后缀的 PDF 地址直接进阅读器；「原文件」放行不再转回；关掉后规则删除', async () => {
   const setAutoOpen = (on: boolean) =>
     sw.evaluate(async (on) => {

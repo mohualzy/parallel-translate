@@ -35,11 +35,12 @@ function makeCanvas(width: number, height: number): HTMLCanvasElement {
 
 /**
  * 渲染两次：一次原样；一次把 fillText / strokeText 换成记录函数，得到只有背景的底图和全部字形。
+ * intent 为 print 时 pdf.js 不用 requestAnimationFrame 分段（后台标签页里它不执行，导出会卡住）。
  * pdf.js 默认用 FontFace + fillText 画字，所以去字形对绝大多数 PDF 有效（Type3 字体除外，见 hasType3Font）。
  */
-export async function renderPage(page: PdfPage, viewport: pdfjs.PageViewport): Promise<RenderedPage> {
+export async function renderPage(page: PdfPage, viewport: pdfjs.PageViewport, intent: 'display' | 'print' = 'display'): Promise<RenderedPage> {
   const original = makeCanvas(viewport.width, viewport.height);
-  await page.render({ canvas: original, canvasContext: original.getContext('2d')!, viewport }).promise;
+  await page.render({ canvas: original, canvasContext: original.getContext('2d')!, viewport, intent }).promise;
 
   const background = makeCanvas(viewport.width, viewport.height);
   // 写译文时要反复读底图的像素（判断纯色底、公式区域能否平移）：放在内存里，免得每次都从 GPU 读回
@@ -62,7 +63,7 @@ export async function renderPage(page: PdfPage, viewport: pdfjs.PageViewport): P
     });
   };
   ctx.strokeText = () => undefined;
-  await page.render({ canvas: background, canvasContext: ctx, viewport }).promise;
+  await page.render({ canvas: background, canvasContext: ctx, viewport, intent }).promise;
   // 实例上的覆盖删掉后，回到原型上的真 fillText
   delete (ctx as { fillText?: unknown }).fillText;
   delete (ctx as { strokeText?: unknown }).strokeText;
