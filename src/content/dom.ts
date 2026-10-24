@@ -231,7 +231,8 @@ export class DomClassifier {
     }
     // Shadow 宿主与 <slot> 的真实内容不在自己的 childNodes 里，按块进入，由 composedChildren 取组合树子节点
     if (el.shadowRoot || tag === 'slot') return this.isExcluded(el) ? 'skip' : 'block';
-    const inlineLevel = display.startsWith('inline') || display === 'contents' || display.startsWith('ruby');
+    // MathML 的行内公式 display 是 math（行间公式是 block math）：按行内算，否则一段话会被每个公式切成几截
+    const inlineLevel = display.startsWith('inline') || display === 'contents' || display.startsWith('ruby') || display === 'math';
 
     // 仅译文模式下按钮当容器进入，文字在按钮内部原地替换，按钮本身照常可点
     if (tag === 'button' && this.translateControls) return this.isExcluded(el) ? 'skip' : 'block';
