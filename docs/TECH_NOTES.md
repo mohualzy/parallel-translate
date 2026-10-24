@@ -133,3 +133,10 @@
   - 稳定选择器都在 `data-testid` 上（`tweetText`、`User-Name`、`UserCell`、`trend`），类名是 `css-146c3p1 r-xxx` 这类原子类。
 - web-access 的代理可能连到另一个浏览器：本机同时开着 Chrome 和 Edge 时，代理重启后可能连上 Edge（`/health` 里看 `browser.id`）。用之前先确认，连错了就结束 `cdp-proxy.mjs` 进程，再运行 `check-deps.mjs` 重连。
 
+## 侧栏
+
+- `chrome.sidePanel.open()` 必须在用户操作（点击、快捷键命令、右键菜单）的处理函数里同步调用，先 `await` 别的再调用会因丢失用户手势而失败。所以「打开侧栏并填入选中文字」要先调用 open，再写 `storage.session`。
+- `storage.session` 默认只对扩展页面和 background 开放（内容脚本访问不到），正适合在后台和侧栏之间交接临时数据；浏览器关闭即清空。
+- WXT 的 `sidepanel` 入口会自动生成 Chrome 的 `side_panel.default_path`、`sidePanel` 权限，以及 Firefox 的 `sidebar_action`。
+- E2E 无法用 Playwright 打开真正的侧栏（需要用户手势），用标签页直接打开 `sidepanel.html` 测试页面逻辑。
+
