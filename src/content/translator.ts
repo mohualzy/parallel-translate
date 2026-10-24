@@ -423,6 +423,9 @@ export class PageTranslator {
       const box = entry.boundingClientRect;
       const visible = entry.intersectionRect;
       if (box.width * box.height > 0 && visible.width * visible.height === 0) continue;
+      // visibility:hidden 的下拉菜单有盒子也在视口里，同样看不见。位置不变时 IntersectionObserver 不会再通知，
+      // 所以它展开后也不会补翻（悬停可按 Ctrl 单独翻译）；换来的是不再为收起的菜单付费
+      if (!isRendered(entry.target)) continue;
       const set = this.targets.get(entry.target);
       if (!set) continue;
       this.targets.delete(entry.target);
