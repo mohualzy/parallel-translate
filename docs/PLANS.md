@@ -86,6 +86,7 @@
 - [x] PDF 译文页选中复制、查找（Ctrl+F，跨行）、划词强调（四色高亮 / 下划线，按文档保存）— 已实现，E2E 通过：[设计](specs/2026-10-24-pdf-text-layer-design.md) · [计划](plans/2026-10-24-pdf-text-layer.md)
 - [x] PDF 强调面板（列出、跳转、删除、导出 Markdown 附原文）— 已实现，E2E 通过：[设计](specs/2026-10-24-pdf-text-layer-design.md) · [计划](plans/2026-10-24-pdf-text-layer.md)
 - [x] PDF 原文页选中复制、查找原文（强调只在译文页）— 已实现，E2E 通过：[设计](specs/2026-10-24-pdf-text-layer-design.md) · [计划](plans/2026-10-24-pdf-text-layer.md)
+- [x] 自动用双语阅读器打开网页上的 PDF（按响应头识别，「原文件」放行）— 已实现，E2E 与 arXiv 实测通过：[计划](plans/2026-10-24-pdf-auto-open.md)
 - [ ] 图片 / 截图区域 OCR 翻译（视觉模型）
 - [ ] EPUB 双语
 - [ ] 编辑译文、多模型对比、无修饰键的悬停自动翻译
