@@ -184,6 +184,82 @@ describe('analyzePage', () => {
     expect(heading.map((b) => b.text)).toEqual(['2.2 Indirect Prompt Injection against LLM Agents']);
   });
 
+  it('段首行（首行缩进、下一行大半是斜体）不被误判为居中而单独成块', () => {
+    const items = [
+      item('Based on this system property, we assume that an', 10, 100),
+      item('can ', 0, 112),
+      item('influence a limited subset of task-relevant', 20, 112, { font: 'ABCDEF+Times-Italic' }),
+      item('agent, causing some values to become inconsistent.', 0, 124),
+    ];
+    const blocks = analyzePage(items, 600);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]!.align).toBe('left');
+  });
+
+  it('两端对齐的标题被拆成几段时并回一行；单级章节号的标题第二行算悬挂缩进', () => {
+    const bold = { size: 12, font: 'ABCDEF+NimbusRomNo9L-Medi' };
+    const items = [
+      ...textLine('the previous paragraph of body text that spans the column.', 0, 80),
+      item('3.3 State-Semantic', 0, 100, bold),
+      item('Construction', 140, 100, bold),
+      item('under', 230, 100, bold),
+      item('Matched Groundability', 25, 114, bold),
+      ...textLine('the next paragraph of body text that spans the whole column.', 0, 134),
+    ];
+    const blocks = analyzePage(items, 600);
+    expect(blocks.map((b) => b.text)).toContain('3.3 State-Semantic Construction under Matched Groundability');
+    const single = analyzePage([item('3 ESTI: Environment State-Text Injection At-', 0, 100, bold), item('tack', 18, 114, bold)], 600);
+    expect(single.map((b) => b.text)).toEqual(['3 ESTI: Environment State-Text Injection Attack']);
+  });
+
+  it('两栏之间的栏缝不会被当成标题的词距并起来', () => {
+    const items = [
+      item('Left column heading words', 0, 100),
+      item('Right column body text line', 160, 100),
+      ...textLine('left body line under the heading here', 0, 112),
+    ];
+    expect(analyzePage(items, 400).map((b) => b.text)).not.toContain('Left column heading words Right column body text line');
+  });
+
+  it('公式编号「(6)」单独成块，不并进下面的段落', () => {
+    const items = [item('(6)', 230, 100), ...textLine('where Sem, Aff, and Pre check semantic compatibility', 0, 112)];
+    expect(analyzePage(items, 400).map((b) => b.text)).toEqual(['(6)', 'where Sem, Aff, and Pre check semantic compatibility']);
+  });
+
+  it('压着重音、带上下标的正文斜体字母是公式变量，和重音、下标连成一个原子', () => {
+    const italic = 'ABCDEF+NimbusRomNo9L-ReguItal';
+    const items = [
+      item('Let ', 0, 100),
+      item('S', 20, 100, { font: italic, w: 5 }),
+      // 宽波浪线（CMEX）略高、压在 S 上
+      item('e', 20.8, 97.6, { font: 'ABCDEF+CMEX10', w: 5.5 }),
+      item('t', 24.8, 101.5, { font: italic, size: 7.4, w: 2 }),
+      item(' denote the state supplied to the planner.', 27, 100),
+    ];
+    const [block] = analyzePage(items, 600);
+    expect(block!.text).toBe('Let <x0/> denote the state supplied to the planner.');
+    expect(block!.atoms[0]!.items.map((i) => i.str).sort()).toEqual(['S', 'e', 't']);
+  });
+
+  it('和段落正文样式不同的行内斜体、粗体用 <gN> 标出并记下样式', () => {
+    const items = [
+      item('We assume that an adversary can ', 0, 100),
+      item('influence a limited subset', 160, 100, { font: 'ABCDEF+NimbusRomNo9L-ReguItal' }),
+      item(' of states, as shown in ', 290, 100),
+      item('Table 2', 405, 100, { font: 'ABCDEF+NimbusRomNo9L-Medi' }),
+      item('.', 440, 100),
+    ];
+    const [block] = analyzePage(items, 800);
+    expect(block!.text).toBe('We assume that an adversary can <g0>influence a limited subset</g0> of states, as shown in <g1>Table 2</g1>.');
+    expect(block!.marks.map((m) => [m.bold, m.italic])).toEqual([
+      [false, true],
+      [true, false],
+    ]);
+    // 整块都是斜体（单位）时不加标签
+    const [all] = analyzePage([item('Wuhan University', 0, 100, { font: 'ABCDEF+NimbusRomNo9L-ReguItal' })], 600);
+    expect(all!.marks).toHaveLength(0);
+  });
+
   it('以脚注标记开头的行是下一条脚注，即使两行一样短', () => {
     const items = [
       item('†', 0, 92.5, { size: 6, font: 'ABCDEF+CMSY6' }),
@@ -257,6 +333,12 @@ describe('analyzePage', () => {
       600,
     );
     expect(long!.atoms).toHaveLength(0);
+  });
+
+  it('页面最下方的页码标为页面装饰；正文里单独的数字不算', () => {
+    const blocks = analyzePage([...textLine('Body text of the page goes here.', 0, 100), item('12', 300, 760), item('(3)', 500, 400)], 600);
+    expect(blocks.find((b) => b.text === '12')!.furniture).toBe(true);
+    expect(blocks.find((b) => b.text === '(3)')!.furniture).toBe(false);
   });
 
   it('单行标题位于页面中线附近时标为居中', () => {

@@ -1,12 +1,14 @@
 import { sameFont } from '@/lib/pdf/color';
-import { ITALIC_FONT, SANS_FONT, type PdfBlock, type PdfTextItem } from '@/lib/pdf/layout';
-import { flowLayout, tokenize, type Measure, type Placement, type Token } from '@/lib/pdf/typeset';
+import { BOLD_FONT, ITALIC_FONT, SANS_FONT, type PdfBlock, type PdfTextItem } from '@/lib/pdf/layout';
+import { flowLayout, tokenize, tokenWidth, type FlowBox, type Measure, type Move, type Placement, type Token } from '@/lib/pdf/typeset';
 import type { Glyph } from './page-render';
 
 /** 译文的行高（字号的倍数） */
 const LINE_HEIGHT = 1.32;
 const CJK_SERIF = '"Songti SC","Noto Serif CJK SC","Source Han Serif SC","SimSun",serif';
 const CJK_SANS = '"PingFang SC","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",sans-serif';
+/** 原文斜体处的中文用楷体（中文排版里强调、引文的习惯写法） */
+const CJK_KAI = '"Kaiti SC","STKaiti","KaiTi","楷体",serif';
 /** PDF 子集字体缺字时，译文里的英文改用的系统字体 */
 const LATIN_SERIF = '"Times New Roman",Times,"Nimbus Roman","Liberation Serif"';
 const LATIN_SANS = 'Arial,Helvetica,"Liberation Sans"';
@@ -60,27 +62,27 @@ function drawGlyph(ctx: CanvasRenderingContext2D, g: Glyph, pre = [1, 0, 0, 1, 0
 
 /**
  * 块的样式：原文的颜色、字重、斜体、字体（拉丁字母先用 PDF 自己的字体，中文回退到系统字体）。
- * 衬线 / 无衬线按原字体名判断：pdf.js 按字体标志给的通用字体族不可靠，TeX 生成的 PDF 常把 Times 标成无衬线。
+ * 衬线 / 无衬线、粗体按原字体名判断：pdf.js 按字体标志给的值不可靠，TeX 生成的 PDF 常把 Times 标成无衬线、
+ * 认不出 NimbusRomNo9L-Medi 是粗体。
  */
 function blockStyle(glyphs: Glyph[], fontName: string) {
   const font = mode(glyphs.map((g) => g.font)) ?? '';
   return {
     fill: mode(glyphs.map((g) => g.fill)) ?? '#000',
-    bold: glyphs.filter((g) => /\b(bold|[6-9]00)\b/.test(g.font)).length > glyphs.length / 2,
+    bold: glyphs.filter((g) => /\b(bold|[6-9]00)\b/.test(g.font)).length > glyphs.length / 2 || BOLD_FONT.test(fontName),
     italic: /\bitalic\b/.test(font) || ITALIC_FONT.test(fontName),
     sans: SANS_FONT.test(fontName),
     own: ownFamily(font),
   };
 }
 
-/** 块区域四周颜色均匀（纯色底）时，用该颜色清空区域，带走分数线、根号上横线等跟着公式移走的矢量线；压在图片上则不清 */
-function clearBlock(ctx: CanvasRenderingContext2D, x0: number, top: number, x1: number, bottom: number) {
-  const pad = 2;
+/** 矩形四周（向外扩 pad）的颜色：均匀（纯色底）时返回该颜色，压在图片、线条上则返回 undefined */
+function borderColor(ctx: CanvasRenderingContext2D, x0: number, top: number, x1: number, bottom: number, pad = 2) {
   const left = Math.max(0, Math.floor(x0 - pad));
   const right = Math.min(ctx.canvas.width - 1, Math.ceil(x1 + pad));
   const upper = Math.max(0, Math.floor(top - pad));
   const lower = Math.min(ctx.canvas.height - 1, Math.ceil(bottom + pad));
-  if (right <= left || lower <= upper) return;
+  if (right <= left || lower <= upper) return undefined;
   const strips = [
     ctx.getImageData(left, upper, right - left, 1),
     ctx.getImageData(left, lower, right - left, 1),
@@ -91,14 +93,34 @@ function clearBlock(ctx: CanvasRenderingContext2D, x0: number, top: number, x1: 
   for (const s of strips) for (let i = 0; i < s.data.length; i += 4) samples.push([s.data[i]!, s.data[i + 1]!, s.data[i + 2]!]);
   const mean = [0, 1, 2].map((c) => samples.reduce((n, p) => n + p[c]!, 0) / samples.length);
   const uniform = samples.every((p) => p.every((v, c) => Math.abs(v - mean[c]!) < 14));
-  if (!uniform) return;
-  ctx.fillStyle = `rgb(${mean.map(Math.round).join(',')})`;
-  ctx.fillRect(left, upper, right - left, lower - upper);
+  return uniform ? { color: `rgb(${mean.map(Math.round).join(',')})`, left, upper, right, lower } : undefined;
+}
+
+/** 区域内是否全是同一种颜色（纯色底，没有线条、图片） */
+function isBlank(ctx: CanvasRenderingContext2D, x0: number, top: number, x1: number, bottom: number): boolean {
+  const left = Math.max(0, Math.floor(x0));
+  const upper = Math.max(0, Math.floor(top));
+  const w = Math.min(ctx.canvas.width, Math.ceil(x1)) - left;
+  const h = Math.min(ctx.canvas.height, Math.ceil(bottom)) - upper;
+  if (w <= 0 || h <= 0) return true;
+  const d = ctx.getImageData(left, upper, w, h).data;
+  for (let i = 4; i < d.length; i += 4) {
+    if (Math.abs(d[i]! - d[0]!) > 14 || Math.abs(d[i + 1]! - d[1]!) > 14 || Math.abs(d[i + 2]! - d[2]!) > 14) return false;
+  }
+  return true;
+}
+
+/** 块区域四周颜色均匀时，用该颜色清空区域，带走分数线、根号上横线等跟着公式移走的矢量线；压在图片上则不清 */
+function clearBlock(ctx: CanvasRenderingContext2D, x0: number, top: number, x1: number, bottom: number) {
+  const border = borderColor(ctx, x0, top, x1, bottom);
+  if (!border) return;
+  ctx.fillStyle = border.color;
+  ctx.fillRect(border.left, border.upper, border.right - border.left, border.lower - border.upper);
 }
 
 const normalize = (s: string) =>
   s
-    .replace(/<x\d+\s*\/>/g, '')
+    .replace(/<x\d+\s*\/>|<\/?g\d+>/g, '')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
@@ -119,7 +141,8 @@ interface Job {
   atomBox: { x0: number; width: number }[];
   tokens: Token[];
   measure: Measure;
-  fontFor(text: string, size: number): string;
+  /** mark：行内样式片段（<gN>）编号 */
+  fontFor(text: string, size: number, mark?: number): string;
   fill: string;
 }
 
@@ -135,15 +158,21 @@ function makeJob(block: PdfBlock, translation: string, plain: Glyph[], coverage:
   for (const i of items) if (!atomItems.has(i)) fontChars.set(i.font, (fontChars.get(i.font) ?? 0) + i.str.trim().length);
   const fontName = [...fontChars].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
   const style = blockStyle([...own].filter((g) => !atomSet.has(g)), fontName);
-  const cover = coverage.get(style.own);
-  const fontFor = (text: string, size: number) => {
-    const weight = style.bold ? 700 : 400;
-    const cjk = style.sans ? CJK_SANS : CJK_SERIF;
-    // 中文不用斜体：浏览器合成的斜体中文很难看
+  // 行内样式片段的原字体（canvas 里注册的字体名）：片段里的英文优先用它
+  const familyById = new Map([...own].map((g) => [g.fontId, ownFamily(g.font)]));
+  const fontFor = (text: string, size: number, mark?: number) => {
+    const m = mark === undefined ? undefined : block.marks[mark];
+    const bold = m ? m.bold || style.bold : style.bold;
+    const italic = m ? m.italic : style.italic;
+    const weight = bold ? 700 : 400;
+    // 中文没有真正的斜体，按中文排版习惯用楷体表示（浏览器合成的斜体中文很难看）
+    const cjk = italic ? CJK_KAI : style.sans ? CJK_SANS : CJK_SERIF;
     if (CJK_CHAR.test(text)) return `${weight} ${size}px ${cjk}`;
     // PDF 的字体多是子集，只有原文用过的字母；缺字时整词换成相近的系统字体，避免一个词里混两种字形
-    const ownOk = style.own !== '' && cover !== undefined && [...text].every((c) => cover.has(c));
-    return `${style.italic ? 'italic ' : ''}${weight} ${size}px ${ownOk ? `${style.own},` : ''}${style.sans ? LATIN_SANS : LATIN_SERIF},${cjk}`;
+    const family = (m?.fontId !== undefined ? familyById.get(m.fontId) : undefined) ?? style.own;
+    const cover = coverage.get(family);
+    const ownOk = family !== '' && cover !== undefined && [...text].every((c) => cover.has(c));
+    return `${italic ? 'italic ' : ''}${weight} ${size}px ${ownOk ? `${family},` : ''}${style.sans ? LATIN_SANS : LATIN_SERIF},${cjk}`;
   };
   // 宽度按字号线性缩放：每段文字只在参考字号下量一次
   const widths = new Map<string, number>();
@@ -156,18 +185,20 @@ function makeJob(block: PdfBlock, translation: string, plain: Glyph[], coverage:
     return { x0, width: Math.max(...gs.map((g) => g.x + g.w)) - x0 };
   });
   const measure: Measure = {
-    text: (text, size) => {
-      let w = widths.get(text);
+    text: (text, size, mark) => {
+      const key = `${mark ?? ''}|${text}`;
+      let w = widths.get(key);
       if (w === undefined) {
-        measureCtx.font = fontFor(text, 100);
+        measureCtx.font = fontFor(text, 100, mark);
         w = measureCtx.measureText(text).width;
-        widths.set(text, w);
+        widths.set(key, w);
       }
       return (w * size) / 100;
     },
     atom: (index, scale) => (atomBox[index]?.width ?? 0) * scale,
   };
-  return { block, own, atomGlyphs, atomBox, tokens: tokenize(translation, block.atoms.length), measure, fontFor, fill: style.fill };
+  const tokens = tokenize(translation, block.atoms.length, block.marks.length);
+  return { block, own, atomGlyphs, atomBox, tokens, measure, fontFor, fill: style.fill };
 }
 
 /** 记录各字体实际画过的字符（跨页累积），用来判断译文里的英文能不能用 PDF 自己的字体 */
@@ -180,8 +211,12 @@ export function recordCoverage(coverage: FontCoverage, glyphs: Glyph[]): void {
   }
 }
 
+/** 整体平移的区域左右多带几个像素：公式常比正文栏略宽 */
+const SLOT_PAD = 3;
+
 /**
- * 画译文页：底图 → 清空要写译文的块 → 画回其余所有字形（保留块、未翻译块、旋转文字）→ 写译文。
+ * 画译文页：底图 → 清空要写译文的块 → 画回其余所有字形（保留块、未翻译块、旋转文字）
+ * → 把夹在译文之间的公式区域整体平移 → 写译文。
  * translations 里没有的块（还没翻译、不翻译、翻译失败）都按原样显示。
  * 同一栏相邻的译文块连成串依次排布（flowLayout），段距一致，省下的空间留在串末。
  */
@@ -205,7 +240,12 @@ export function drawTranslatedPage(
     })
     .map((block) => makeJob(block, translations.get(block)!, plain, coverage));
   const translated = new Set(jobs.map((j) => j.block));
-  const placements = flowLayout(
+  // 公式区域能整体平移的条件：四周是纯色底（看不含文字的底图），没有图片、线条跨过边界；
+  // 两段直接相连时，中间的空隙要什么都没有（脚注分隔线、图片会截断）
+  const bg = background.getContext('2d')!;
+  const slotOk = (s: FlowBox) => borderColor(bg, s.x0 - SLOT_PAD, s.top, s.x1 + SLOT_PAD, s.bottom, 0) !== undefined;
+  const blank = (s: FlowBox) => isBlank(bg, s.x0, s.top, s.x1, s.bottom);
+  const { placements, moves } = flowLayout(
     jobs.map(({ block, tokens, measure }) => ({
       x0: block.x0,
       x1: block.x1,
@@ -221,22 +261,45 @@ export function drawTranslatedPage(
           ? { first: 0, rest: 0 }
           : { first: block.firstIndent > block.size * 0.5 ? 2 : 0, rest: block.restIndent > block.size * 0.5 ? block.restIndent / block.size : 0 },
     })),
-    blocks.filter((b) => !translated.has(b)),
+    // 页码等页面装饰不参与连排，也不会被当成串尾的公式带走
+    blocks.filter((b) => !translated.has(b) && !b.furniture),
     { lineHeight: LINE_HEIGHT },
+    { slotOk, blank },
   );
 
   for (const job of jobs) clearBlock(ctx, job.block.x0, job.block.top, job.block.x1, job.block.bottom);
   const claimed = new Set(jobs.flatMap((j) => [...j.own]));
   for (const g of glyphs) if (!claimed.has(g)) drawGlyph(ctx, g);
+  moveSlots(ctx, moves);
 
   jobs.forEach((job, k) => drawBlock(ctx, job, placements[k]!));
+}
+
+/** 公式区域整体平移：先把所有原位置清成底色，再从快照里把各区域画到新位置（区域之间可能重叠） */
+function moveSlots(ctx: CanvasRenderingContext2D, moves: Move[]) {
+  if (moves.length === 0) return;
+  const snapshot = document.createElement('canvas');
+  snapshot.width = ctx.canvas.width;
+  snapshot.height = ctx.canvas.height;
+  snapshot.getContext('2d')!.drawImage(ctx.canvas, 0, 0);
+  const rects = moves.map((m) => {
+    const x = Math.max(0, Math.floor(m.x0 - SLOT_PAD));
+    const y = Math.max(0, Math.floor(m.top));
+    return { x, y, w: Math.ceil(m.x1 + SLOT_PAD) - x, h: Math.ceil(m.bottom) - y, dy: Math.round(m.dy) };
+  });
+  for (const r of rects) {
+    const border = borderColor(ctx, r.x, r.y, r.x + r.w, r.y + r.h, 0);
+    ctx.fillStyle = border?.color ?? '#fff';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+  }
+  for (const r of rects) ctx.drawImage(snapshot, r.x, r.y, r.w, r.h, r.x, r.y + r.dy, r.w, r.h);
 }
 
 function drawBlock(ctx: CanvasRenderingContext2D, job: Job, p: Placement) {
   const { block, measure } = job;
   const scale = p.size / block.size;
   const width = block.x1 - block.x0;
-  const widthOf = (t: Token) => (t.kind === 'atom' ? measure.atom(t.index, scale) : measure.text(t.kind === 'space' ? ' ' : t.text, p.size));
+  const widthOf = (t: Token) => tokenWidth(t, p.size, scale, measure);
 
   p.lines.forEach((line, i) => {
     const baseline = p.top + p.size * (1 + i * LINE_HEIGHT);
@@ -250,7 +313,7 @@ function drawBlock(ctx: CanvasRenderingContext2D, job: Job, p: Placement) {
         for (const g of job.atomGlyphs[t.index] ?? []) drawGlyph(ctx, g, [scale, 0, 0, scale, x - box.x0 * scale, baseline - atom.y * scale]);
       } else {
         const text = t.kind === 'space' ? ' ' : t.text;
-        ctx.font = job.fontFor(text, p.size);
+        ctx.font = job.fontFor(text, p.size, t.mark);
         ctx.fillStyle = job.fill;
         ctx.fillText(text, x, baseline);
       }

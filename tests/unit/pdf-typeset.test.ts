@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { breakLines, chainBlocks, flowLayout, tokenize, type FlowBlock, type Measure, type Token } from '@/lib/pdf/typeset';
+import { breakLines, chainBlocks, flowLayout, tokenize, type FlowBlock, type FlowBox, type Measure, type Token } from '@/lib/pdf/typeset';
 
 /** 测量：中文字符宽 1 个字号，其他字符宽 0.5 个字号；原子固定宽 20 × 缩放 */
 const measure: Measure = {
@@ -12,7 +12,8 @@ const show = (lines: Token[][]) =>
 describe('tokenize', () => {
   it('中文逐字、英文按词、原子按编号；反转义；丢弃不存在的原子编号', () => {
     const tokens = tokenize('使用softmax函数计算<x0/>和 <x5/> &lt;b&gt;', 1);
-    expect(show([tokens])).toEqual(['使用softmax函数计算<0>和 <b>']);
+    // 汉字与英文、原子之间自动补空格
+    expect(show([tokens])).toEqual(['使用 softmax 函数计算 <0> 和 <b>']);
     expect(tokens.filter((t) => t.kind === 'atom')).toHaveLength(1);
   });
 
@@ -24,8 +25,8 @@ describe('tokenize', () => {
 describe('breakLines', () => {
   it('按宽度断行，中文逐字可断，英文单词与原子不可断', () => {
     const lines = breakLines(tokenize('我们使用Transformer模型<x0/>完成任务', 1), 60, 10, 1, measure);
-    // Transformer 宽 55，后面跟不下「模」；「模型」+ 原子 +「完成」正好 60
-    expect(show(lines)).toEqual(['我们使用', 'Transformer', '模型<0>完成', '任务']);
+    // Transformer 宽 55，后面跟不下「模」；「模型 原子 完」正好 60（中西文之间各补一个宽 5 的空格）
+    expect(show(lines)).toEqual(['我们使用', 'Transformer', '模型 <0> 完', '成任务']);
   });
 
   it('避头：句读不放行首；避尾：开括号不留行尾', () => {
@@ -59,6 +60,9 @@ function flowBlock(box: Partial<FlowBlock> & { top: number; bottom: number }, ch
   return { x0: 0, x1: 100, size: 10, tokens: tokenize('字'.repeat(chars), 0), measure, indentEm: { first: 0, rest: 0 }, ...box };
 }
 
+const chains = (blocks: FlowBox[], obstacles: FlowBox[], slotOk?: (s: FlowBox) => boolean) => chainBlocks(blocks, obstacles, slotOk).map((r) => r.blocks);
+const placementsOf = (blocks: FlowBlock[], obstacles: FlowBox[]) => flowLayout(blocks, obstacles).placements;
+
 describe('chainBlocks', () => {
   it('同一栏上下相邻的块连成串；两栏各自成串', () => {
     const blocks = [
@@ -67,17 +71,27 @@ describe('chainBlocks', () => {
       { x0: 0, x1: 100, top: 52, bottom: 90, size: 10 },
       { x0: 200, x1: 300, top: 52, bottom: 90, size: 10 },
     ];
-    expect(chainBlocks(blocks, [])).toEqual([
+    expect(chains(blocks, [])).toEqual([
       [0, 2],
       [1, 3],
     ]);
   });
 
-  it('中间隔着保留原文的块（公式）、大段空白（图片）或是表格单元格时不连', () => {
+  it('中间只隔着保留原文的块（公式）时连成串，公式区域作为平移区；区域四周不是纯色底、或公式伸进别的栏时不连', () => {
     const a = { x0: 0, x1: 100, top: 0, bottom: 50, size: 10 };
-    expect(chainBlocks([a, { x0: 0, x1: 100, top: 80, bottom: 120, size: 10 }], [{ x0: 20, x1: 80, top: 55, bottom: 75, size: 10 }])).toEqual([[0], [1]]);
-    expect(chainBlocks([a, { x0: 0, x1: 100, top: 100, bottom: 140, size: 10 }], [])).toEqual([[0], [1]]);
-    expect(chainBlocks([a, { x0: 0, x1: 100, top: 52, bottom: 90, size: 10, fixed: true }], [])).toEqual([[0], [1]]);
+    const b = { x0: 0, x1: 100, top: 80, bottom: 120, size: 10 };
+    const formula = { x0: 20, x1: 80, top: 55, bottom: 75, size: 10 };
+    const [run] = chainBlocks([a, b], [formula]);
+    expect(run!.blocks).toEqual([0, 1]);
+    expect(run!.slots[1]).toMatchObject({ x0: 0, x1: 100, top: 50, bottom: 80 });
+    expect(chains([a, b], [formula], () => false)).toEqual([[0], [1]]);
+    expect(chains([a, b], [{ ...formula, x1: 300 }])).toEqual([[0], [1]]);
+  });
+
+  it('大段空白（图片、脚注上方）或是表格单元格时不连', () => {
+    const a = { x0: 0, x1: 100, top: 0, bottom: 50, size: 10 };
+    expect(chains([a, { x0: 0, x1: 100, top: 100, bottom: 140, size: 10 }], [])).toEqual([[0], [1]]);
+    expect(chains([a, { x0: 0, x1: 100, top: 52, bottom: 90, size: 10, fixed: true }], [])).toEqual([[0], [1]]);
   });
 
   it('通栏块下面的两栏不接在通栏块后面；两栏下面的通栏块也不接', () => {
@@ -87,7 +101,7 @@ describe('chainBlocks', () => {
       { x0: 200, x1: 300, top: 25, bottom: 60, size: 10 },
       { x0: 0, x1: 300, top: 65, bottom: 80, size: 10 },
     ];
-    expect(chainBlocks(blocks, [])).toEqual([[0], [1], [2], [3]]);
+    expect(chains(blocks, [])).toEqual([[0], [1], [2], [3]]);
   });
 });
 
@@ -95,7 +109,7 @@ describe('flowLayout', () => {
   it('串内译文依次排布：后一段紧接前一段，段距不因译文变短而变大', () => {
     // 原文两段各 5 行；译文各 15 字（2 行），第二段上移
     const blocks = [flowBlock({ top: 0, bottom: 56 }, 15), flowBlock({ top: 55, bottom: 111 }, 15)];
-    const [a, b] = flowLayout(blocks, []);
+    const [a, b] = placementsOf(blocks, []);
     expect(a!.top).toBe(0);
     expect(a!.size).toBe(10);
     // 第一段占 10 × (1 + 1.32 + 0.3) = 26.2，原文两段之间没有额外段距
@@ -105,14 +119,14 @@ describe('flowLayout', () => {
 
   it('原文的额外段距（标题前后）按比例保留', () => {
     const blocks = [flowBlock({ top: 0, bottom: 56 }, 15), flowBlock({ top: 75, bottom: 131 }, 15)];
-    const [, b] = flowLayout(blocks, []);
+    const [, b] = placementsOf(blocks, []);
     expect(b!.top).toBeCloseTo(26.2 + 0.2 + 20);
   });
 
   it('整串装不下时整串一起缩小，字号一致', () => {
     // 两段原文各 1 行，译文各 15 字：原字号要 2 行，装不下
     const blocks = [flowBlock({ top: 0, bottom: 13 }, 15), flowBlock({ top: 13, bottom: 26 }, 15)];
-    const [a, b] = flowLayout(blocks, []);
+    const [a, b] = placementsOf(blocks, []);
     expect(a!.size).toBeLessThan(10);
     expect(a!.size).toBe(b!.size);
   });
@@ -126,15 +140,62 @@ describe('flowLayout', () => {
       // 单行标签：很挤
       flowBlock({ x0: 400, x1: 420, top: 0, bottom: 13 }, 10),
     ];
-    const [left, right, label] = flowLayout(blocks, []);
+    const [left, right, label] = placementsOf(blocks, []);
     expect(right!.size).toBeLessThan(10);
     expect(left!.size).toBe(right!.size);
     expect(label!.size).toBeLessThan(right!.size);
   });
 
   it('首行缩进按译文字号的两个字计算', () => {
-    const [p] = flowLayout([flowBlock({ top: 0, bottom: 56, indentEm: { first: 2, rest: 0 } }, 15)], []);
+    const [p] = placementsOf([flowBlock({ top: 0, bottom: 56, indentEm: { first: 2, rest: 0 } }, 15)], []);
     expect(p!.indent.first).toBe(20);
     expect(show(p!.lines)[0]).toHaveLength(8);
+  });
+});
+
+describe('flowLayout 公式区域', () => {
+  it('两段之间的公式区域跟着上一段上移，和下一段的间距保持原样', () => {
+    // 上一段原文 5 行（到 56），译文 2 行（到 26.2）；公式在 56–80 之间；下一段从 80 开始
+    const blocks = [flowBlock({ top: 0, bottom: 56 }, 15), flowBlock({ top: 80, bottom: 136 }, 15)];
+    const { placements, moves } = flowLayout(blocks, [{ x0: 20, x1: 80, top: 60, bottom: 76, size: 10 }]);
+    expect(moves).toHaveLength(1);
+    expect(moves[0]!.dy).toBeCloseTo(26.2 - 56);
+    expect(placements[1]!.top).toBeCloseTo(80 + moves[0]!.dy);
+  });
+});
+
+describe('tokenize 行内样式', () => {
+  it('<gN> 内的文字标上样式编号；不存在的编号忽略；转义的标签也能认出', () => {
+    const tokens = tokenize('我们假设对手能够<g0>影响有限的状态</g0>，并且<g7>其他</g7>', 0, 1);
+    const marked = tokens.filter((t) => t.kind === 'text' && t.mark === 0).map((t) => (t.kind === 'text' ? t.text : '')).join('');
+    expect(marked).toBe('影响有限的状态');
+    expect(tokens.some((t) => t.kind === 'text' && t.text === '其' && t.mark === undefined)).toBe(true);
+    expect(tokenize('&lt;g0&gt;强调&lt;/g0&gt;', 0, 1).every((t) => t.kind !== 'text' || t.mark === 0)).toBe(true);
+  });
+
+  it('全角标点与英文之间不补空格', () => {
+    expect(show([tokenize('如图1所示，ESTI有效', 0)])).toEqual(['如图 1 所示，ESTI 有效']);
+  });
+});
+
+describe('flowLayout 串尾公式', () => {
+  it('栏底的行间公式（后面没有下一段）跟着最后一段上移；离得远的东西不带', () => {
+    const blocks = [flowBlock({ top: 0, bottom: 56 }, 15)];
+    const formula = { x0: 20, x1: 80, top: 62, bottom: 76, size: 10 };
+    const far = { x0: 40, x1: 60, top: 200, bottom: 212, size: 10 };
+    const { moves } = flowLayout(blocks, [formula, far]);
+    expect(moves).toHaveLength(1);
+    expect(moves[0]).toMatchObject({ top: 56 });
+    expect(moves[0]!.bottom).toBeLessThan(200);
+    expect(moves[0]!.dy).toBeCloseTo(26.2 - 56);
+  });
+});
+
+describe('chainBlocks 脚注', () => {
+  it('两段之间的空隙里有线条（脚注分隔线）时不连，脚注留在原位', () => {
+    const body = { x0: 0, x1: 100, top: 0, bottom: 50, size: 10 };
+    const footnote = { x0: 0, x1: 100, top: 70, bottom: 80, size: 9 };
+    expect(chains([body, footnote], [])).toEqual([[0, 1]]);
+    expect(chainBlocks([body, footnote], [], undefined, () => false).map((r) => r.blocks)).toEqual([[0], [1]]);
   });
 });
