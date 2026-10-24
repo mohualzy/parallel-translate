@@ -1,0 +1,133 @@
+body {
+  margin: 0;
+  background: var(--surface-2);
+}
+
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.doc-title {
+  flex: 1;
+  min-width: 160px;
+  overflow: hidden;
+  font-size: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.segmented button {
+  padding: 5px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.segmented button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.zoom .btn {
+  padding: 2px 9px;
+}
+
+.notice {
+  margin: 8px 16px 0;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--warn-bg);
+  color: var(--warn-text);
+  font-size: 13px;
+}
+
+.pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+
+/* 每页：左原文、右译文；尺寸由阅读器按容器宽度算好写进 --w / --h */
+.page {
+  display: flex;
+  gap: 12px;
+  min-height: var(--h);
+}
+
+.page::before,
+.page:empty::after {
+  content: none;
+}
+
+.page:empty {
+  width: calc(var(--w) * 2 + 12px);
+  height: var(--h);
+}
+
+.pages[data-mode='translation'] .page:empty,
+.pages[data-mode='original'] .page:empty {
+  width: var(--w);
+}
+
+.page canvas,
+.page:empty {
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.page canvas {
+  width: var(--w);
+  height: var(--h);
+}
+
+.pages[data-mode='translation'] .page canvas.original,
+.pages[data-mode='original'] .page canvas.translated {
+  display: none;
+}
+
+.empty {
+  max-width: 520px;
+  margin: 80px auto;
+  padding: 40px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  text-align: center;
+}
+
+body.dragging .empty,
+body.dragging .pages {
+  outline: 3px dashed var(--accent);
+  outline-offset: -8px;
+}

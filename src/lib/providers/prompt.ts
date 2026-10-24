@@ -35,6 +35,8 @@ export interface PromptOptions {
   summary?: string;
   /** 视频字幕：提示模型相邻片段是连续台词 */
   subtitles?: boolean;
+  /** PDF：译文要放回原位置，空间有限，不加括注与解释 */
+  fixedLayout?: boolean;
   /** 本批命中的用户术语 */
   glossary?: GlossaryEntry[];
 }
@@ -111,6 +113,10 @@ export function buildMessages(segments: string[], opts: PromptOptions): ChatMess
       (zh
         ? '内容类型：视频字幕。相邻片段是连续的台词，一句话可能被拆在相邻片段里；译文要口语化、简洁，便于跟着画面阅读。'
         : 'Content type: video subtitles. Adjacent segments are consecutive spoken lines and a sentence may span several segments; keep translations natural, spoken and concise.'),
+    opts.fixedLayout &&
+      (zh
+        ? '内容类型：PDF 文档。译文要放回原文的位置，空间有限：不要添加括注原文、解释或补充，用简洁的说法。'
+        : 'Content type: PDF document. Each translation goes back into the original position with limited space: do not add parenthesized originals, explanations or additions; keep it concise.'),
   ].filter(Boolean);
   return [
     { role: 'system', content: system },

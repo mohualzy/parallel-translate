@@ -3,6 +3,7 @@ import './style.css';
 import { browser } from 'wxt/browser';
 import { sendToTab, type TabState } from '@/lib/messages';
 import { getProfile, PROFILES } from '@/lib/profiles';
+import { isPdfUrl, viewerUrl } from '@/lib/pdf/url';
 import { openSidePanel } from '@/lib/side-panel';
 import { getProviders, getSettings, saveSettings, type DisplayMode, type Settings } from '@/lib/settings';
 import { $, fillSelect, languageOptions, styleOptions } from '@/ui/labels';
@@ -163,6 +164,18 @@ async function init() {
     renderState(await sendToTab(tabId, { type: 'retry-failed' }).catch(() => undefined));
   });
   $('#open-options').addEventListener('click', () => browser.runtime.openOptionsPage());
+  // 当前页是 PDF（浏览器自带的阅读器）：在本标签页换成双语阅读器；否则新开空白阅读器选本地文件
+  const pdfUrl = tab?.url && isPdfUrl(tab.url) ? tab.url : undefined;
+  const pdfButton = $<HTMLButtonElement>('#open-pdf');
+  if (pdfUrl) {
+    pdfButton.textContent = '用双语阅读器打开此 PDF';
+    pdfButton.classList.add('btn-primary');
+  }
+  pdfButton.addEventListener('click', async () => {
+    if (pdfUrl && tabId !== undefined) await browser.tabs.update(tabId, { url: viewerUrl(pdfUrl) });
+    else await browser.tabs.create({ url: viewerUrl() });
+    window.close();
+  });
   // 同步调用以保住用户手势（见 lib/side-panel.ts），打开后关掉弹窗
   $('#open-side-panel').addEventListener('click', () => {
     void openSidePanel(windowId).then(() => window.close(), () => undefined);

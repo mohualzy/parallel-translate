@@ -64,6 +64,17 @@ describe('划词 prompt', () => {
   });
 });
 
+describe('PDF 版面提示', () => {
+  it('fixedLayout 时在上下文里要求简洁、不加括注', () => {
+    const [, zh] = buildMessages(['Hi'], { targetLang: 'zh-CN', fixedLayout: true });
+    expect(zh?.content).toContain('内容类型：PDF 文档');
+    const [, en] = buildMessages(['Hallo'], { targetLang: 'en', fixedLayout: true });
+    expect(en?.content).toContain('do not add parenthesized originals');
+    const [, none] = buildMessages(['Hi'], { targetLang: 'zh-CN' });
+    expect(none?.content).not.toContain('PDF');
+  });
+});
+
 describe('风格档案', () => {
   it('档案替换风格段，格式协议不变；自定义要求叠加在后', () => {
     const [tech] = buildMessages(['Hi'], { targetLang: 'zh-CN', profile: 'tech' });

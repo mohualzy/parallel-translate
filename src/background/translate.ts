@@ -116,6 +116,7 @@ export async function translateSegments(segments: string[], page: PageContext): 
     title: page.title,
     summary: page.summary,
     subtitles: page.subtitles,
+    fixedLayout: page.fixedLayout,
   };
   const outcome = await translateBatch(
     missing.map((i) => segments[i]!),

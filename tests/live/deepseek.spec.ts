@@ -308,6 +308,17 @@ test('真实模型：侧栏多段文本译成中文，保留段落与列表；�
   await panel.close();
 });
 
+test('真实模型：PDF 阅读器翻译标题与两段正文，没有失败', async () => {
+  test.setTimeout(120_000);
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/pdf.html?file=${encodeURIComponent(`${server.url}/sample.pdf`)}`);
+  const first = page.locator('.page[data-page="1"]');
+  await expect(first).toHaveAttribute('data-translated', /^[3-9]$/, { timeout: 60_000 });
+  await expect(page.locator('#progress')).not.toContainText('失败');
+  await expect(page.locator('#notice')).toBeHidden();
+  await page.close();
+});
+
 test('真实模型：设置页测试连接成功', async () => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/options.html`);

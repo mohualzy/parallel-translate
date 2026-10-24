@@ -12,6 +12,8 @@ export interface PageContext {
   summary: string;
   /** 内容是视频字幕：相邻片段是连续台词，译文要口语、简洁 */
   subtitles?: boolean;
+  /** 内容来自 PDF 版面：译文要放回原位置，提示模型保持简洁 */
+  fixedLayout?: boolean;
   /** 翻译风格档案 id（lib/profiles.ts），由内容脚本按网站解析 */
   profile?: string;
   /** AI 从本文抽取的术语（与用户术语表合并，用户的优先） */

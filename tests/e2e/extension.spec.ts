@@ -1161,6 +1161,61 @@ test('侧栏：右键菜单经 storage.session 交来的文字自动填入并翻
   await panel.close();
 });
 
+test('PDF 阅读器：渲染原文页与译文页；正文按段翻译（跨行合并），代码与竖排水印不翻；译文页画上了译文', async () => {
+  const { SAMPLE_PDF_TEXT: t } = await import('./fixtures/sample-pdf');
+  const before = server.batches.length;
+  const page = await context.newPage();
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(`chrome-extension://${extensionId}/pdf.html?file=${encodeURIComponent(`${server.url}/sample.pdf`)}`);
+  await expect(page.locator('#doc-title')).toHaveText('sample.pdf');
+  const first = page.locator('.page[data-page="1"]');
+  await expect(first.locator('canvas.original')).toBeVisible();
+  await expect(first.locator('canvas.translated')).toBeVisible();
+  await expect(page.locator('#progress')).toContainText('已翻译');
+
+  await expect.poll(() => server.batches.slice(before).flat()).toEqual(
+    expect.arrayContaining([t.title, t.paragraph1.join(' '), t.paragraph2.join(' ')]),
+  );
+  const sent = server.batches.slice(before).flat().join('\n');
+  expect(sent).not.toContain('npm install');
+  expect(sent).not.toContain('arXiv');
+  // 风格与版面提示：普通文档用通用风格，并要求译文简洁
+  expect(server.users.at(-1)).toContain('PDF');
+
+  // 译文页与原文页的像素不同（原字形去掉、写上了译文）
+  const differs = await first.evaluate((el) => {
+    const [a, b] = [...el.querySelectorAll('canvas')].map((c) => c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data);
+    let diff = 0;
+    for (let i = 0; i < a!.length; i += 4) if (Math.abs(a![i]! - b![i]!) > 40) diff++;
+    return diff;
+  });
+  expect(differs).toBeGreaterThan(500);
+
+  await page.locator('#mode button[data-value="translation"]').click();
+  await expect(page.locator('.page[data-page="1"] canvas.original')).toBeHidden();
+  await expect(page.locator('.page[data-page="1"] canvas.translated')).toBeVisible();
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+test('PDF 阅读器：弹窗在 PDF 页面上显示「用双语阅读器打开此 PDF」，点击后本标签页换成阅读器', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/fake.pdf`);
+  await page.bringToFront();
+  const popupPromise = context.waitForEvent('page');
+  await sw.evaluate(async (target) => {
+    const tab = (await chrome.tabs.query({})).find((t) => t.url === target)!;
+    await chrome.tabs.create({ windowId: tab.windowId, url: chrome.runtime.getURL('/popup.html'), active: false });
+  }, page.url());
+  const popup = await popupPromise;
+  const button = popup.locator('#open-pdf');
+  await expect(button).toHaveText('用双语阅读器打开此 PDF');
+  await button.click();
+  await expect(page).toHaveURL(new RegExp(`^chrome-extension://${extensionId}/pdf\\.html\\?file=.*fake\\.pdf`));
+  await page.close();
+});
+
 test('设置页：显示已配置服务，测试连接与获取模型列表可用', async () => {
   const page = await context.newPage();
   const errors: string[] = [];

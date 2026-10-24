@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF 双语阅读</title>
+  </head>
+  <body>
+    <header class="toolbar">
+      <strong id="doc-title" class="doc-title">PDF 双语阅读</strong>
+      <div class="segmented" id="mode" role="group" aria-label="显示方式">
+        <button type="button" data-value="bilingual">双语并排</button>
+        <button type="button" data-value="translation">仅译文</button>
+        <button type="button" data-value="original">仅原文</button>
+      </div>
+      <label class="inline">风格 <select id="profile"></select></label>
+      <div class="zoom">
+        <button type="button" class="btn" id="zoom-out" aria-label="缩小">−</button>
+        <span id="zoom-label">100%</span>
+        <button type="button" class="btn" id="zoom-in" aria-label="放大">＋</button>
+      </div>
+      <span id="progress" class="muted"></span>
+      <button type="button" class="btn" id="retry" hidden>重试失败的段落</button>
+      <button type="button" class="btn" id="open">打开本地文件</button>
+      <input type="file" id="file" accept="application/pdf,.pdf" hidden />
+    </header>
+
+    <p id="notice" class="notice" hidden></p>
+
+    <main id="pages" class="pages"></main>
+
+    <section id="empty" class="empty" hidden>
+      <p><strong>把 PDF 拖到这里</strong>，或点右上角「打开本地文件」</p>
+      <p class="muted">文件只在本机解析和显示，不会上传；发给翻译服务的只有要翻译的文字。</p>
+    </section>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

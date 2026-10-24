@@ -10,6 +10,7 @@ import {
   translateSelection,
   translateText,
 } from '@/background/translate';
+import { PDF_LINK_PATTERNS, viewerUrl } from '@/lib/pdf/url';
 import { openSidePanel, PENDING_TEXT_KEY } from '@/lib/side-panel';
 import { TEXT_PORT, type TextRequest } from '@/lib/text-translate';
 import { injectIntoOpenTabs, sendWithInject } from '@/lib/inject';
@@ -27,6 +28,7 @@ import {
 
 const MENU_TOGGLE = 'ptx-toggle';
 const MENU_SIDE_PANEL = 'ptx-side-panel-selection';
+const MENU_PDF_LINK = 'ptx-pdf-link';
 
 async function handle(
   request: BackgroundRequest,
@@ -73,6 +75,7 @@ export default defineBackground(() => {
   browser.runtime.onInstalled.addListener((details) => {
     browser.contextMenus.create({ id: MENU_TOGGLE, title: '翻译此页面 / 显示原文', contexts: ['page'] });
     browser.contextMenus.create({ id: MENU_SIDE_PANEL, title: '在侧栏中翻译选中文字', contexts: ['selection'] });
+    browser.contextMenus.create({ id: MENU_PDF_LINK, title: '用双语阅读器打开 PDF', contexts: ['link'], targetUrlPatterns: PDF_LINK_PATTERNS });
     if (details.reason === 'install') void browser.runtime.openOptionsPage();
     // 安装前打开的页面没有内容脚本，更新后旧脚本已失效：补注入，用户不用刷新页面
     if (details.reason === 'install' || details.reason === 'update') void injectIntoOpenTabs();
@@ -82,6 +85,9 @@ export default defineBackground(() => {
 
   browser.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId === MENU_TOGGLE) void sendToActiveTab({ type: 'toggle' }, tab?.id);
+    if (info.menuItemId === MENU_PDF_LINK && info.linkUrl) {
+      void browser.tabs.create({ url: viewerUrl(info.linkUrl), index: tab ? tab.index + 1 : undefined });
+    }
     if (info.menuItemId === MENU_SIDE_PANEL) {
       // 先同步打开（保住用户手势），再把文字交给侧栏：侧栏可能还没加载完，所以经 storage.session 而不是消息
       void openSidePanel(tab?.windowId).catch(() => undefined);
