@@ -73,7 +73,7 @@
 - [x] 视频双语字幕（YouTube）— 已实现，E2E 与真实站点实测通过：[设计](specs/2026-10-22-youtube-subtitles-design.md) · [计划](plans/2026-10-22-youtube-subtitles.md)
 - [x] 输入框翻译：Alt+I / 连按三次空格；过滤输入法组合输入；可撤销写回 — 已实现，E2E、真实模型与 ProseMirror / Lexical 实测通过：[设计](specs/2026-10-23-input-translate-design.md) · [计划](plans/2026-10-23-input-translate.md)
 - [x] AI 助手 / prompt 档案：技术、论文、新闻、GitHub 等预设风格，可按站点自动选择— 已实现：六种风格、按网站 / 论文元数据自动选择、弹窗按网站指定；E2E 与真实模型通过：[设计](specs/2026-10-23-prompt-profiles-design.md) · [计划](plans/2026-10-23-prompt-profiles.md)
-- [ ] AI 抽取文章术语，保证长文前后译法一致（最多 12 条候选）
+- [x] AI 抽取文章术语，保证长文前后译法一致（最多 12 条候选）— 已实现：并行抽取不阻塞首屏、冲突段落带术语重翻、弹窗查看；E2E 与真实模型通过：[设计](specs/2026-10-23-article-terms-design.md) · [计划](plans/2026-10-23-article-terms.md)
 - [ ] 原生侧栏（`chrome.sidePanel`）：文本翻译
 - [x] 安装/更新后对已打开的标签页注入内容脚本（免刷新）— 已实现：安装/更新时主动注入 + 发消息失败时按需注入，新旧实例交接并保留翻译状态；E2E 与日常 Chrome 重载实测通过：[设计](specs/2026-10-23-inject-open-tabs-design.md) · [计划](plans/2026-10-23-inject-open-tabs.md)
 - [x] 常见站点适配规则（X、Reddit、GitHub、Hacker News 等）— 均已实测：HN、GitHub、X 用规则；Reddit 修通用识别后不需要规则：[设计](specs/2026-10-23-site-rules-design.md) · [计划](plans/2026-10-23-site-rules.md)
