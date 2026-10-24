@@ -37,3 +37,9 @@ function matches(entry: GlossaryEntry, text: string): boolean {
 export function matchGlossary(entries: GlossaryEntry[], texts: string[]): GlossaryEntry[] {
   return entries.filter((entry) => texts.some((text) => matches(entry, text)));
 }
+
+/** 合并用户术语表与文章术语：同一原文以用户术语表为准（用户写的是确定的译法，AI 抽取的是推测） */
+export function mergeGlossary(user: GlossaryEntry[], article: GlossaryEntry[]): GlossaryEntry[] {
+  const known = new Set(user.map((e) => e.source.toLowerCase()));
+  return [...user, ...article.filter((e) => !known.has(e.source.toLowerCase()))];
+}

@@ -1,5 +1,6 @@
 import { browser } from 'wxt/browser';
 import { sendWithInject } from './inject';
+import type { GlossaryEntry } from './glossary';
 import type { ProviderConfig } from './settings';
 
 // ---------- 页面 / 设置页 → background ----------
@@ -13,10 +14,14 @@ export interface PageContext {
   subtitles?: boolean;
   /** 翻译风格档案 id（lib/profiles.ts），由内容脚本按网站解析 */
   profile?: string;
+  /** AI 从本文抽取的术语（与用户术语表合并，用户的优先） */
+  terms?: GlossaryEntry[];
 }
 
 export type BackgroundRequest =
   | { type: 'translate'; segments: string[]; page: PageContext }
+  /** 长文术语抽取：从正文抽取全文需要一致的术语 */
+  | { type: 'extract-terms'; text: string }
   /** 输入框翻译：译成 inputTargetLang */
   | { type: 'translate-input'; text: string }
   | { type: 'test-provider'; provider: ProviderConfig }
@@ -38,6 +43,7 @@ export interface TranslateResult {
 export interface BackgroundResponses {
   translate: TranslateResult;
   'translate-input': string;
+  'extract-terms': GlossaryEntry[];
   'test-provider': { text: string; ms: number };
   'list-models': string[];
   'clear-cache': null;
@@ -95,6 +101,8 @@ export interface TabState {
   done: number;
   failed: number;
   pageLang: string;
+  /** AI 从本文抽取的术语 */
+  terms: GlossaryEntry[];
   /** 当前页面实际使用的翻译风格档案，以及不考虑用户指定时自动选择的档案 */
   profile: string;
   autoProfile: string;

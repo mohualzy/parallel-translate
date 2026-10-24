@@ -110,3 +110,19 @@ main {
   padding: 8px 14px 12px;
   font-size: 12px;
 }
+
+.terms {
+  font-size: 12px;
+}
+
+.terms summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.terms ul {
+  max-height: 160px;
+  margin: 6px 0 0;
+  padding-left: 18px;
+  overflow-y: auto;
+}

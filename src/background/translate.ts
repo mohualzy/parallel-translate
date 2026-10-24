@@ -1,14 +1,17 @@
 import { browser } from 'wxt/browser';
 import { Semaphore, withRetry } from '@/lib/async';
 import { translateBatch } from '@/lib/batch';
-import { matchGlossary, parseGlossary, type GlossaryEntry } from '@/lib/glossary';
+import { matchGlossary, mergeGlossary, parseGlossary, type GlossaryEntry } from '@/lib/glossary';
 import type { PageContext, SelectionRequest, TranslateResult } from '@/lib/messages';
 import { buildMessages, createClient, HttpError, parseSegments, PROMPT_VERSION, type ChatMessage } from '@/lib/providers';
 import {
   buildInputMessages,
   buildSelectionMessages,
+  buildTermsMessages,
   cleanInputOutput,
   INPUT_PROMPT_VERSION,
+  parseTerms,
+  TERMS_PROMPT_VERSION,
   SELECTION_PROMPT_VERSION,
   stripReasoning,
 } from '@/lib/providers/prompt';
@@ -93,7 +96,8 @@ async function requireProvider(): Promise<ProviderConfig> {
  */
 export async function translateSegments(segments: string[], page: PageContext): Promise<TranslateResult> {
   const [settings, provider] = await Promise.all([getSettings(), requireProvider()]);
-  const glossary = parseGlossary(settings.glossary);
+  // 文章术语与用户术语表走同一通道：只注入本批命中的条目，命中的条目计入缓存键
+  const glossary = mergeGlossary(parseGlossary(settings.glossary), page.terms ?? []);
   // 档案计入缓存键：换了风格，旧译文不会被误用（通用档案沿用 'general'）
   const profile = page.profile ?? 'general';
   const keys = await Promise.all(segments.map((s) => cacheKey(provider, settings, s, glossary, profile)));
@@ -173,6 +177,27 @@ export async function translateSelection(
     if (!text) throw new Error('模型返回了空内容');
     await cache.setMany([[key, text]]).catch(() => undefined);
     return text;
+  } catch (err) {
+    throw new Error(describeError(err, provider));
+  }
+}
+
+/**
+ * 长文术语抽取（见 docs/specs/2026-10-23-article-terms-design.md）：一次请求，结果按正文缓存。
+ * 走并发队列与重试：它和网页翻译同时发出，不比首屏更急。
+ */
+export async function extractTerms(text: string): Promise<GlossaryEntry[]> {
+  const [settings, provider] = await Promise.all([getSettings(), requireProvider()]);
+  const known = parseGlossary(settings.glossary);
+  const key = await cache.sha256(
+    JSON.stringify(['terms', provider.baseURL, provider.model, settings.targetLang, TERMS_PROMPT_VERSION, settings.glossary, text]),
+  );
+  const hit = (await cache.getMany([key])).get(key);
+  if (hit !== undefined) return JSON.parse(hit) as GlossaryEntry[];
+  try {
+    const terms = parseTerms(await complete(provider, buildTermsMessages(text, settings.targetLang, known)), text);
+    await cache.setMany([[key, JSON.stringify(terms)]]).catch(() => undefined);
+    return terms;
   } catch (err) {
     throw new Error(describeError(err, provider));
   }

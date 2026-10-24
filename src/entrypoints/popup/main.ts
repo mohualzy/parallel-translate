@@ -9,16 +9,32 @@ import { $, fillSelect, languageOptions, styleOptions } from '@/ui/labels';
 const toggleBtn = $<HTMLButtonElement>('#toggle');
 const retryBtn = $<HTMLButtonElement>('#retry');
 const profileSelect = $<HTMLSelectElement>('#profile');
+const termsBox = $<HTMLDetailsElement>('#terms');
 const statusEl = $('#status');
 const noticeEl = $('#notice');
 
 let tabId: number | undefined;
 let host = '';
 
+/** 本文术语：AI 抽取的术语和译法，让用户知道为什么某个词这样译（不对就写进术语表纠正） */
+function renderTerms(terms: TabState['terms']) {
+  termsBox.hidden = terms.length === 0;
+  termsBox.querySelector('summary')!.textContent = `本文术语 ${terms.length} 条（AI 抽取，保证前后译法一致）`;
+  // 弹窗每秒刷新一次状态，内容没变就不重建，免得打断滚动
+  const text = terms.map((t) => `${t.source} → ${t.target}`);
+  const list = termsBox.querySelector('ul')!;
+  if (list.dataset.text === text.join('|')) return;
+  list.dataset.text = text.join('|');
+  list.replaceChildren(
+    ...text.map((t) => Object.assign(document.createElement('li'), { textContent: t })),
+  );
+}
+
 function renderState(state: TabState | undefined) {
   retryBtn.hidden = !state?.enabled || state.failed === 0;
   // 「自动」后面显示当前页面自动选中的风格（论文页的判断依赖页面内容，只有内容脚本知道）
   profileSelect.disabled = !state;
+  renderTerms(state?.terms ?? []);
   const auto = profileSelect.querySelector<HTMLOptionElement>('option[value="auto"]');
   if (auto) auto.textContent = state ? `自动（${getProfile(state.autoProfile).name}）` : '自动';
   if (state) retryBtn.textContent = `重试失败的 ${state.failed} 段`;

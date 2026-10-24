@@ -22,6 +22,9 @@ export interface MockServer {
   inputs: string[];
   /** 大于 0 时每个请求先等这么久再响应（模拟慢模型） */
   delayMs: number;
+  /** 术语抽取请求收到的正文，以及要返回的术语行（`原文 = 译法`） */
+  extractions: string[];
+  termsOutput: string;
   /** 匹配的段原样返回（模拟模型对人名、产品名不做翻译） */
   echoWhen: ((segment: string) => boolean) | null;
   /** 多段请求时故意漏掉匹配的段，模拟模型漏段 */
@@ -79,7 +82,7 @@ function extractSegments(content: string): string[] {
 }
 
 export async function startMockServer(): Promise<MockServer> {
-  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], systems: [], users: [], selections: [], inputs: [], delayMs: 0, failWith: null, echoWhen: null, dropWhen: null };
+  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], systems: [], users: [], selections: [], inputs: [], delayMs: 0, extractions: [], termsOutput: '', failWith: null, echoWhen: null, dropWhen: null };
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -125,6 +128,15 @@ export async function startMockServer(): Promise<MockServer> {
       if (state.delayMs > 0) await new Promise((r) => setTimeout(r, state.delayMs));
       const user = body.messages.at(-1).content as string;
       const system = body.messages[0].content as string;
+      // 文章术语抽取：<article> 包着正文，返回预设的术语行（稍晚返回，模拟首屏先于术语翻译完）
+      const article = /<article>([\s\S]*?)<\/article>/.exec(user)?.[1];
+      if (article !== undefined) {
+        state.extractions.push(article);
+        await new Promise((r) => setTimeout(r, 300));
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ choices: [{ message: { content: state.termsOutput } }] }));
+        return;
+      }
       const segments = extractSegments(user);
       // 划词翻译：<text> 包着选中文本
       const selected = segments.length === 0 ? /<text>([\s\S]*?)<\/text>/.exec(user)?.[1] : undefined;

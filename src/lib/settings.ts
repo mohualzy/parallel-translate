@@ -44,6 +44,8 @@ export interface Settings {
   siteRules: boolean;
   /** 额外排除的 CSS 选择器（命中的元素及其子树不翻译） */
   excludeSelectors: string[];
+  /** 长文自动抽取术语，保证前后译法一致（每篇文章多一次请求） */
+  extractTerms: boolean;
   /** 用户术语表原文：每行 `原文 = 译法`（见 lib/glossary.ts） */
   glossary: string;
   batchMaxChars: number;
@@ -91,6 +93,7 @@ export const DEFAULT_SETTINGS: Settings = {
   siteProfiles: {},
   siteRules: true,
   excludeSelectors: [],
+  extractTerms: true,
   glossary: '',
   batchMaxChars: 2000,
   batchMaxSegments: 12,

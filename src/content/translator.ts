@@ -1,6 +1,7 @@
 import { isProbablyInLanguage } from '@/lib/languages';
 import { sendToBackground, type TabState } from '@/lib/messages';
 import type { Settings } from '@/lib/settings';
+import { matchGlossary, parseGlossary, type GlossaryEntry } from '@/lib/glossary';
 import { findSiteRule } from '@/lib/site-rules';
 import { collectRuns, runContainsPoint, type Run } from './collect';
 import { buildExcludeSelector, composedParent, CONTENT_CONTAINERS, DomClassifier, looksLikeUIChrome, OWN_TAG } from './dom';
@@ -35,6 +36,8 @@ interface Paragraph extends Run {
   restores: number;
   /** 内容刚变化过的段落要等到这个时间点（ms）仍未再变，才发起翻译 */
   settleAt?: number;
+  /** 发出请求时的文章术语版本：术语晚于请求返回时，要检查译法冲突 */
+  termsVersion?: number;
 }
 
 const MAX_INFLIGHT = 4;
@@ -46,6 +49,9 @@ const MAX_RESTORES = 5;
 const SETTLE_MS = 1000;
 /** 整页可翻译文字少于这个字数时提示「可能已是目标语言」 */
 const SAME_LANGUAGE_MAX_CHARS = 100;
+/** 正文达到这个字数才算长文、才抽取术语；送去抽取的正文最多这么长（见文章术语设计） */
+const TERMS_MIN_CHARS = 3000;
+const TERMS_MAX_CHARS = 8000;
 
 function classifierFor(settings: Settings): DomClassifier {
   const translateControls = settings.displayMode === 'translation';
@@ -115,6 +121,11 @@ export class PageTranslator {
   private lastByContainer = new WeakMap<Element, Paragraph>();
   /** 当前扫描是否由 DOM 变化触发（首次整页扫描不算） */
   private dynamicScan = false;
+  /** AI 从本文抽取的术语；随每批请求发送，与用户术语表合并 */
+  private articleTerms: GlossaryEntry[] = [];
+  /** 文章术语每更新一次 +1；本轮翻译是否已发起抽取 */
+  private termsVersion = 0;
+  private termsRequested = false;
 
   constructor(
     public settings: Settings,
@@ -148,6 +159,7 @@ export class PageTranslator {
     this.mo = new MutationObserver((records) => this.onMutations(records));
     this.mo.observe(document.body, { childList: true, subtree: true, characterData: true });
     this.scan([document.body]);
+    this.maybeExtractTerms();
     this.title.start();
     this.emitEnabled();
     // 稍等动态内容加载后再判断，避免 SPA 首屏还没渲染就误报
@@ -207,6 +219,12 @@ export class PageTranslator {
   updateSettings(next: Settings) {
     const prev = this.settings;
     this.settings = next;
+    if (prev.extractTerms !== next.extractTerms) {
+      // 关闭后之后的批次不再带文章术语；开启时当前页如是长文就补发抽取
+      this.articleTerms = [];
+      this.termsRequested = false;
+      this.maybeExtractTerms();
+    }
     const excludeChanged =
       prev.excludeSelectors.join('\n') !== next.excludeSelectors.join('\n') || prev.siteRules !== next.siteRules;
     const modeChanged = prev.displayMode !== next.displayMode;
@@ -286,6 +304,7 @@ export class PageTranslator {
       done,
       failed,
       pageLang: this.pageLang,
+      terms: this.articleTerms,
       profile: pageProfile(this.settings.siteProfiles),
       autoProfile: pageAutoProfile(),
     };
@@ -429,6 +448,44 @@ export class PageTranslator {
     this.layoutQueue.clear();
     for (const el of this.unclamped) el.removeAttribute('data-ptx-unclamp');
     this.unclamped.clear();
+    this.articleTerms = [];
+    this.termsRequested = false;
+  }
+
+  // ---------- 文章术语（见 docs/specs/2026-10-23-article-terms-design.md） ----------
+
+  /** 长文：并行抽取术语，不阻塞首屏；每轮翻译最多抽取一次。动态加载的页面在正文变长后补发 */
+  private maybeExtractTerms() {
+    if (this.termsRequested || !this.enabled || !this.settings.extractTerms) return;
+    // 时间线、评论流不是同一篇文章，没有前后一致的问题
+    if (pageProfile(this.settings.siteProfiles) === 'social') return;
+    let text = '';
+    for (const p of this.paragraphs) {
+      text += `${p.plain}\n`;
+      if (text.length >= TERMS_MAX_CHARS) break;
+    }
+    if (text.length < TERMS_MIN_CHARS) return;
+    this.termsRequested = true;
+    const generation = this.generation;
+    void sendToBackground({ type: 'extract-terms', text: text.slice(0, TERMS_MAX_CHARS) }).then(
+      (terms) => {
+        if (generation !== this.generation || terms.length === 0) return;
+        this.articleTerms = terms;
+        this.termsVersion++;
+        for (const p of this.paragraphs) if (p.state === 'done' && this.conflictsWithTerms(p)) this.enqueue(p);
+      },
+      () => undefined, // 抽取失败不影响翻译，只是少了一致性保证
+    );
+  }
+
+  /** 译文没有采用本文术语的译法（用户术语表里的词不算，它从一开始就在 prompt 里） */
+  private conflictsWithTerms(p: Paragraph): boolean {
+    const translation = p.translation;
+    if (!translation) return false;
+    const user = new Set(parseGlossary(this.settings.glossary).map((e) => e.source.toLowerCase()));
+    return matchGlossary(this.articleTerms, [p.plain]).some(
+      (e) => !user.has(e.source.toLowerCase()) && !translation.includes(e.target),
+    );
   }
 
   // ---------- 懒翻译与批量请求 ----------
@@ -534,12 +591,16 @@ export class PageTranslator {
   private async runBatch(batch: Paragraph[]) {
     this.inflight++;
     const generation = this.generation;
+    const termsVersion = this.termsVersion;
     for (const p of batch) {
       p.state = 'loading';
-      this.renderLoading(p);
+      p.termsVersion = termsVersion;
+      // 带着术语重翻的段落保留旧译文，新译文到了再替换，不闪加载提示
+      if (!p.translation) this.renderLoading(p);
     }
     try {
-      const res = await sendToBackground({ type: 'translate', segments: batch.map((p) => p.source), page: pageContext(this.title.originalTitle, this.settings.siteProfiles) });
+      const page = { ...pageContext(this.title.originalTitle, this.settings.siteProfiles), terms: this.articleTerms };
+      const res = await sendToBackground({ type: 'translate', segments: batch.map((p) => p.source), page });
       if (generation !== this.generation) return;
       batch.forEach((p, i) => {
         if (!this.paragraphs.has(p)) return;
@@ -549,6 +610,8 @@ export class PageTranslator {
           p.translation = text;
           p.error = undefined;
           if (!p.dismissed) this.renderDone(p);
+          // 请求发出后才拿到文章术语：译法冲突就带着术语重翻
+          if ((p.termsVersion ?? 0) < this.termsVersion && this.conflictsWithTerms(p)) this.enqueue(p);
         } else {
           p.state = 'error';
           p.error = res.error ?? '翻译失败';
@@ -766,6 +829,7 @@ export class PageTranslator {
       return true;
     });
     this.scan(outermost, true);
+    this.maybeExtractTerms();
     this.prune();
   }
 }

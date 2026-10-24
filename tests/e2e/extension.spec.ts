@@ -1029,6 +1029,58 @@ test('翻译风格：论文页自动用学术论文风格；在弹窗里为网�
   await page.close();
 });
 
+async function tabState(page: Page) {
+  return sw.evaluate(async (target) => {
+    const tab = (await chrome.tabs.query({})).find((t) => t.url === target)!;
+    return chrome.tabs.sendMessage(tab.id!, { type: 'get-state' }, { frameId: 0 });
+  }, page.url());
+}
+
+test('文章术语：长文抽取一次术语，之后的批次带上命中的术语；首屏译法冲突的段落带着术语重翻', async () => {
+  server.termsOutput = 'agent = 智能体\nscratchpad = 草稿区\nhallucinated term = 不存在';
+  const extractionsBefore = server.extractions.length;
+  const page = await context.newPage();
+  await page.goto(`${server.url}/long-article.html`);
+  await toggle(page);
+  await expect(translation(page, '#a0')).toContainText('【译】Section 0');
+  await expect.poll(() => server.extractions.length).toBe(extractionsBefore + 1);
+  // 正文里没有出现的「术语」被丢弃
+  await expect.poll(async () => (await tabState(page)).terms).toEqual([
+    { source: 'agent', target: '智能体' },
+    { source: 'scratchpad', target: '草稿区' },
+  ]);
+  // 首屏在术语返回前就翻好了；mock 的译文不含「智能体」，算冲突，带着术语重翻
+  await expect
+    .poll(() => server.batches.some((b, i) => b.some((s) => s.startsWith('Section 0:')) && server.systems[i]!.includes('agent → 智能体')))
+    .toBe(true);
+  // 后面滚动到的段落一开始就带着术语
+  await page.locator('#a13').scrollIntoViewIfNeeded();
+  await expect(translation(page, '#a13')).toContainText('【译】Section 13');
+  const last = server.batches.findIndex((b) => b.some((s) => s.startsWith('Section 13:')));
+  expect(server.systems[last]).toContain('scratchpad → 草稿区');
+  await page.close();
+});
+
+test('文章术语：短页面不抽取；关闭开关后不抽取', async () => {
+  const before = server.extractions.length;
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  await toggle(page);
+  await expect(translation(page, '#p-second')).toContainText('【译】');
+
+  await setSettings({ extractTerms: false });
+  const long = await context.newPage();
+  await long.goto(`${server.url}/long-article.html?off`);
+  await toggle(long);
+  await expect(translation(long, '#a0')).toContainText('【译】Section 0');
+  await long.waitForTimeout(800);
+  expect(server.extractions.length).toBe(before);
+  expect((await tabState(long)).terms).toEqual([]);
+  await setSettings({ extractTerms: true });
+  await long.close();
+  await page.close();
+});
+
 test('设置页：显示已配置服务，测试连接与获取模型列表可用', async () => {
   const page = await context.newPage();
   const errors: string[] = [];

@@ -1,7 +1,14 @@
 import { browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
 import * as cache from '@/background/cache';
-import { listModels, testProvider, translateInput, translateSegments, translateSelection } from '@/background/translate';
+import {
+  extractTerms,
+  listModels,
+  testProvider,
+  translateInput,
+  translateSegments,
+  translateSelection,
+} from '@/background/translate';
 import { injectIntoOpenTabs, sendWithInject } from '@/lib/inject';
 import {
   SELECTION_PORT,
@@ -37,6 +44,8 @@ async function handle(
       return translateSegments(request.segments, request.page);
     case 'translate-input':
       return translateInput(request.text);
+    case 'extract-terms':
+      return extractTerms(request.text);
     case 'test-provider':
       return testProvider(request.provider);
     case 'list-models':

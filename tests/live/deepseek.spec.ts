@@ -226,6 +226,37 @@ test('真实模型：技术文档、社交媒体两种风格下都遵守分段�
   await page.close();
 });
 
+test('真实模型：长文抽取出可解析的术语，同一术语在全文译法一致', async () => {
+  test.setTimeout(180_000);
+  const page = await context.newPage();
+  await page.goto(`${server.url}/long-article.html`);
+  const state = () =>
+    sw.evaluate(async (target) => {
+      const tab = (await chrome.tabs.query({})).find((t) => t.url === target)!;
+      return chrome.tabs.sendMessage(tab.id!, { type: 'get-state' }, { frameId: 0 });
+    }, page.url());
+  await sw.evaluate(async (target) => {
+    const tab = (await chrome.tabs.query({})).find((t) => t.url === target)!;
+    for (let i = 0; i < 50; i++) {
+      try {
+        return await chrome.tabs.sendMessage(tab.id!, { type: 'translate-whole-page' }, { frameId: 0 });
+      } catch {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    }
+  }, page.url());
+  await expect.poll(async () => (await state()).terms.length, { timeout: 60_000 }).toBeGreaterThan(0);
+  const terms = (await state()).terms as { source: string; target: string }[];
+  console.log('抽取的术语：', terms.map((t) => `${t.source} = ${t.target}`).join('；'));
+  const agent = terms.find((t) => t.source.toLowerCase() === 'agent');
+  expect(agent, '应抽取到全文反复出现的 agent').toBeTruthy();
+  // 等术语生效后的重翻完成：每段译文都采用同一个译法
+  for (const id of ['#a0', '#a6', '#a13']) {
+    await expect(translation(page, id)).toContainText(agent!.target, { timeout: 60_000 });
+  }
+  await page.close();
+});
+
 test('真实模型：设置页测试连接成功', async () => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/options.html`);
