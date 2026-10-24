@@ -1167,6 +1167,10 @@ test('PDF 阅读器：渲染原文页与译文页；正文按段翻译（跨行�
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
+  // 反复从 GPU 画布读回像素时 Chrome 会警告（会出现在扩展的「错误」列表里）
+  page.on('console', (m) => {
+    if (/willReadFrequently/.test(m.text())) errors.push(m.text());
+  });
   await page.goto(`chrome-extension://${extensionId}/pdf.html?file=${encodeURIComponent(`${server.url}/sample.pdf`)}`);
   await expect(page.locator('#doc-title')).toHaveText('sample.pdf');
   const first = page.locator('.page[data-page="1"]');

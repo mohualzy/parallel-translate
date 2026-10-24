@@ -42,7 +42,8 @@ export async function renderPage(page: PdfPage, viewport: pdfjs.PageViewport): P
   await page.render({ canvas: original, canvasContext: original.getContext('2d')!, viewport }).promise;
 
   const background = makeCanvas(viewport.width, viewport.height);
-  const ctx = background.getContext('2d')!;
+  // 写译文时要反复读底图的像素（判断纯色底、公式区域能否平移）：放在内存里，免得每次都从 GPU 读回
+  const ctx = background.getContext('2d', { willReadFrequently: true })!;
   const glyphs: Glyph[] = [];
   ctx.fillText = function (this: CanvasRenderingContext2D, text: string, x: number, y: number) {
     const t = this.getTransform();
@@ -62,7 +63,7 @@ export async function renderPage(page: PdfPage, viewport: pdfjs.PageViewport): P
   };
   ctx.strokeText = () => undefined;
   await page.render({ canvas: background, canvasContext: ctx, viewport }).promise;
-  // 实例上的覆盖删掉后，回到原型上的真 fillText，后面要在这张底图上写译文
+  // 实例上的覆盖删掉后，回到原型上的真 fillText
   delete (ctx as { fillText?: unknown }).fillText;
   delete (ctx as { strokeText?: unknown }).strokeText;
   return { original, background, glyphs };

@@ -107,9 +107,12 @@ function isBlank(ctx: CanvasRenderingContext2D, x0: number, top: number, x1: num
   return true;
 }
 
-/** 块区域四周颜色均匀时，用该颜色清空区域，带走分数线、根号上横线等跟着公式移走的矢量线；压在图片上则不清 */
-function clearBlock(ctx: CanvasRenderingContext2D, x0: number, top: number, x1: number, bottom: number) {
-  const border = borderColor(ctx, x0, top, x1, bottom);
+/**
+ * 块区域四周颜色均匀时，用该颜色清空区域，带走分数线、根号上横线等跟着公式移走的矢量线；压在图片上则不清。
+ * 像素一律从底图 bg 读（内存画布）：译文画布在 GPU 上，反复读回很慢。
+ */
+function clearBlock(ctx: CanvasRenderingContext2D, bg: CanvasRenderingContext2D, x0: number, top: number, x1: number, bottom: number) {
+  const border = borderColor(bg, x0, top, x1, bottom);
   if (!border) return;
   ctx.fillStyle = border.color;
   ctx.fillRect(border.left, border.upper, border.right - border.left, border.lower - border.upper);
@@ -228,6 +231,7 @@ export function drawTranslatedPage(
   cjkFont: string,
 ): void {
   const ctx = target.getContext('2d')!;
+  const bg = background.getContext('2d', { willReadFrequently: true })!;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.drawImage(background, 0, 0);
 
@@ -241,7 +245,6 @@ export function drawTranslatedPage(
   const translated = new Set(jobs.map((j) => j.block));
   // 公式区域能整体平移的条件：四周是纯色底（看不含文字的底图），没有图片、线条跨过边界；
   // 两段直接相连时，中间的空隙要什么都没有（脚注分隔线、图片会截断）
-  const bg = background.getContext('2d')!;
   const slotOk = (s: FlowBox) => borderColor(bg, s.x0 - SLOT_PAD, s.top, s.x1 + SLOT_PAD, s.bottom, 0) !== undefined;
   const blank = (s: FlowBox) => isBlank(bg, s.x0, s.top, s.x1, s.bottom);
   const { placements, moves } = flowLayout(
@@ -266,16 +269,16 @@ export function drawTranslatedPage(
     { slotOk, blank },
   );
 
-  for (const job of jobs) clearBlock(ctx, job.block.x0, job.block.top, job.block.x1, job.block.bottom);
+  for (const job of jobs) clearBlock(ctx, bg, job.block.x0, job.block.top, job.block.x1, job.block.bottom);
   const claimed = new Set(jobs.flatMap((j) => [...j.own]));
   for (const g of glyphs) if (!claimed.has(g)) drawGlyph(ctx, g);
-  moveSlots(ctx, moves);
+  moveSlots(ctx, bg, moves);
 
   jobs.forEach((job, k) => drawBlock(ctx, job, placements[k]!));
 }
 
-/** 公式区域整体平移：先把所有原位置清成底色，再从快照里把各区域画到新位置（区域之间可能重叠） */
-function moveSlots(ctx: CanvasRenderingContext2D, moves: Move[]) {
+/** 公式区域整体平移：先把所有原位置清成底色（按底图取色），再从快照里把各区域画到新位置（区域之间可能重叠） */
+function moveSlots(ctx: CanvasRenderingContext2D, bg: CanvasRenderingContext2D, moves: Move[]) {
   if (moves.length === 0) return;
   const snapshot = document.createElement('canvas');
   snapshot.width = ctx.canvas.width;
@@ -287,7 +290,7 @@ function moveSlots(ctx: CanvasRenderingContext2D, moves: Move[]) {
     return { x, y, w: Math.ceil(m.x1 + SLOT_PAD) - x, h: Math.ceil(m.bottom) - y, dy: Math.round(m.dy) };
   });
   for (const r of rects) {
-    const border = borderColor(ctx, r.x, r.y, r.x + r.w, r.y + r.h, 0);
+    const border = borderColor(bg, r.x, r.y, r.x + r.w, r.y + r.h, 0);
     ctx.fillStyle = border?.color ?? '#fff';
     ctx.fillRect(r.x, r.y, r.w, r.h);
   }
