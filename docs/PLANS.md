@@ -45,7 +45,7 @@
 | 文本 / 侧栏多模型对比 | ❌ | P3（当前只用一个模型，收益低） |
 | 编辑译文 | ❌ | P3 |
 | 视频字幕 | ✅ YouTube 双语字幕（旁听播放器字幕、按进度翻译、优先人工字幕） | 嵌入式播放器、Shorts、直播字幕待做 |
-| PDF / EPUB / HTML 文件 | ❌ | P3；自带本地 pdf.js 阅读器，文件不交给远程 Web App |
+| PDF / EPUB / HTML 文件 | PDF ✅ / EPUB、HTML ❌ | PDF 用自带的本地 pdf.js 阅读器，文件不交给远程 Web App；EPUB、HTML 文件为 P3 |
 | 图片 / 漫画 OCR | ❌ | P3；deepseek-flash 支持图片输入，优先评估视觉模型 |
 | 截图区域 OCR | ❌ | P3，与图片翻译共用视觉模型通道 |
 | AI 写作 | ❌ | **不做**：不是翻译需求 |
