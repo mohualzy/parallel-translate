@@ -116,3 +116,13 @@
 - 合成的 `paste` 事件浏览器不会执行默认粘贴：普通 contenteditable 收到后什么都不发生，只能当作「编辑器自己处理粘贴」的探测手段。
 - 快捷键冲突：沉浸式翻译同样占用 Alt+A / Alt+W / Alt+I。两个扩展都装着时，后装的拿不到默认按键（实测本机所有命令都没有绑定），需要在 `chrome://extensions/shortcuts` 手动设置。
 
+## 网站适配
+
+- 用 Playwright 自带的 Chromium 加载 e2e 构建、配本地 mock 模型访问真实网站，可以低成本看清「哪些元素被当成段落」：不花 API 费用，页面正常渲染。日常 Chrome 里通过 CDP 新开的是后台标签页，懒翻译和很多网站自己的渲染（如 X 的时间线）都不会进行。
+- GitHub：
+  - 文件查看页的代码是一行一个 `div.react-code-text`，不在 `<pre>`/`<code>` 里；容器 `.react-code-file-contents` 带 `aria-hidden="true"`，给读屏器的是另一份隐藏的 textarea。
+  - 大量类名是 CSS Modules 哈希（`Box__0K17vj`、`list__GYi3Jn`），稳定的是 `data-testid`、`aria-label`、`aria-labelledby` 和 `react-*`、`blob-*` 这类老类名。
+  - 未登录顶栏的下拉菜单用 `visibility:hidden` 收起。
+- Reddit：当前网络下 www.reddit.com 和 old.reddit.com 都返回「blocked by network security / network policy」，要求登录。
+- X：未登录时个人主页只显示「查看完整个人资料」的登录墙，没有推文；Playwright 的浏览器打开 x.com 直接返回错误状态码。
+
