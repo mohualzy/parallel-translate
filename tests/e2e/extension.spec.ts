@@ -263,8 +263,11 @@ test('快捷键：Alt+W 立即翻译整页（不等滚动），再按还原；�
   await expect(page.locator('ptx-t')).toHaveCount(0);
 
   await command(page, 'translate-whole-page');
-  // 视口外的段落也被翻译
+  // 视口外的段落也被翻译；看不见的（收起的菜单、读屏专用标题）不翻
   await expect(translation(page, '#p-far')).toContainText('【译】This paragraph is far below the fold.');
+  const sent = server.batches.flat().join('\n');
+  expect(sent).not.toContain('Hidden dropdown item');
+  expect(sent).not.toContain('Repository navigation landmark');
   await command(page, 'translate-whole-page');
   await expect(page.locator('ptx-t')).toHaveCount(0);
 

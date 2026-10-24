@@ -51,6 +51,12 @@ function classifierFor(settings: Settings): DomClassifier {
   return new DomClassifier(buildExcludeSelector(settings.excludeSelectors, translateControls), translateControls);
 }
 
+/** 元素是否渲染出来了（自身或祖先 display:none、visibility:hidden 时为否）；display:contents 没有盒子，按可见处理 */
+function isRendered(el: Element): boolean {
+  if (!el.checkVisibility) return true;
+  return el.checkVisibility({ visibilityProperty: true }) || getComputedStyle(el).display === 'contents';
+}
+
 function isClipping(el: Element): boolean {
   const cs = getComputedStyle(el);
   if (/auto|scroll/.test(`${cs.overflowX} ${cs.overflowY}`)) return false;
@@ -171,7 +177,8 @@ export class PageTranslator {
     }
     this.enable();
     for (const p of this.paragraphs) {
-      if (p.state === 'idle' && !p.dismissed) this.enqueueWhenSettled(p);
+      // 看不见的（收起的下拉菜单等）不提前翻译，仍由 IntersectionObserver 在出现时处理
+      if (p.state === 'idle' && !p.dismissed && isRendered(p.container)) this.enqueueWhenSettled(p);
     }
   }
 

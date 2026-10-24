@@ -61,7 +61,16 @@ const BUILTIN_EXCLUDE = [
 const CONTROL_ROLES = ['[role="button"]', '[role="tab"]', '[role="menuitem"]', '[role="switch"]'];
 
 /** 只给屏幕阅读器的隐藏文字：看不见，翻译出来反而会显示在页面上 */
-const VISUALLY_HIDDEN = '.sr-only,.visually-hidden,.visuallyhidden,.screen-reader-text,.a11y-hidden';
+const VISUALLY_HIDDEN = [
+  '.sr-only',
+  '.visually-hidden',
+  '.visuallyhidden',
+  '.screen-reader-text',
+  '.a11y-hidden',
+  // CSS Modules 带哈希的类名，如 GitHub 的 visuallyHidden__TIbnmb、prc-src-InternalVisuallyHidden-2YaI6
+  '[class*="VisuallyHidden"]',
+  '[class*="visuallyHidden"]',
+].join(',');
 
 /** 正文类容器：里面的文字再短也是内容（标题、列表项、表格单元格） */
 export const CONTENT_CONTAINERS = new Set([
