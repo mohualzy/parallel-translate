@@ -172,6 +172,8 @@ export class DomClassifier {
     private readonly excludeSelector: string,
     /** 仅译文模式：按钮等控件当普通容器进入翻译（见 CONTROL_ROLES） */
     private readonly translateControls = false,
+    /** 网站规则的白名单：非空时只翻译这些元素里的内容（见 lib/site-rules.ts） */
+    readonly includeSelector = '',
   ) {}
 
   /** 每轮扫描前调用：样式可能已变化，旧分类作废 */
@@ -189,6 +191,15 @@ export class DomClassifier {
   isInsideExcluded(el: Element): boolean {
     for (let cur: Element | null = el; cur; cur = composedParent(cur)) {
       if (cur.localName === OWN_TAG || this.isExcluded(cur)) return true;
+    }
+    return false;
+  }
+
+  /** el 是否在白名单区域内；没有白名单时总是 true */
+  isInsideIncluded(el: Element): boolean {
+    if (!this.includeSelector) return true;
+    for (let cur: Element | null = el; cur; cur = composedParent(cur)) {
+      if (cur.matches(this.includeSelector)) return true;
     }
     return false;
   }

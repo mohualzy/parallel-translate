@@ -943,6 +943,23 @@ test('免刷新：再次注入时旧实例退场，新实例接续翻译，悬�
   await page.close();
 });
 
+test('网站规则：白名单内的短标题和正文照翻，白名单外的元信息不翻，排除区域不翻；关闭开关后回到通用识别', async () => {
+  const page = await context.newPage();
+  // e2e 构建里 localhost 有一条测试规则（见 lib/site-rules.ts），127.0.0.1 上的其他测试页不受影响
+  await page.goto(`${server.url.replace('127.0.0.1', 'localhost')}/site-rules.html`);
+  await toggle(page);
+  await expect(translation(page, '#title-cell')).toHaveText('【译】A short story title (example.com)');
+  await expect(translation(page, '#comment')).toContainText('【译】This comment body should be translated');
+  await page.waitForTimeout(500);
+  await expect(page.locator('#meta ptx-t, #comhead ptx-t, #code ptx-t')).toHaveCount(0);
+
+  await setSettings({ siteRules: false });
+  await expect(translation(page, '#meta')).toContainText('【译】42 points');
+  await expect(translation(page, '#code')).toContainText('【译】let answer');
+  await setSettings({ siteRules: true });
+  await page.close();
+});
+
 test('设置页：显示已配置服务，测试连接与获取模型列表可用', async () => {
   const page = await context.newPage();
   const errors: string[] = [];

@@ -1,6 +1,7 @@
 import { isProbablyInLanguage } from '@/lib/languages';
 import { sendToBackground, type TabState } from '@/lib/messages';
 import type { Settings } from '@/lib/settings';
+import { findSiteRule } from '@/lib/site-rules';
 import { collectRuns, runContainsPoint, type Run } from './collect';
 import { buildExcludeSelector, composedParent, CONTENT_CONTAINERS, DomClassifier, looksLikeUIChrome, OWN_TAG } from './dom';
 import { pageContext } from './page-context';
@@ -48,7 +49,12 @@ const SAME_LANGUAGE_MAX_CHARS = 100;
 
 function classifierFor(settings: Settings): DomClassifier {
   const translateControls = settings.displayMode === 'translation';
-  return new DomClassifier(buildExcludeSelector(settings.excludeSelectors, translateControls), translateControls);
+  const rule = settings.siteRules ? findSiteRule(location.hostname) : undefined;
+  return new DomClassifier(
+    buildExcludeSelector([...settings.excludeSelectors, ...(rule?.exclude ?? [])], translateControls),
+    translateControls,
+    rule?.include?.join(',') ?? '',
+  );
 }
 
 /** 元素是否渲染出来了（自身或祖先 display:none、visibility:hidden 时为否）；display:contents 没有盒子，按可见处理 */
@@ -198,7 +204,8 @@ export class PageTranslator {
   updateSettings(next: Settings) {
     const prev = this.settings;
     this.settings = next;
-    const excludeChanged = prev.excludeSelectors.join('\n') !== next.excludeSelectors.join('\n');
+    const excludeChanged =
+      prev.excludeSelectors.join('\n') !== next.excludeSelectors.join('\n') || prev.siteRules !== next.siteRules;
     const modeChanged = prev.displayMode !== next.displayMode;
     if (excludeChanged || modeChanged) this.classifier = classifierFor(next);
 
@@ -285,8 +292,18 @@ export class PageTranslator {
 
   private isTranslatable(run: Run, plain: string, manual: boolean): boolean {
     if (!this.isWorthTranslating(plain)) return false;
+    if (manual) return true;
+    // 网站规则的白名单：区域外不翻；区域内是规则认定的正文，短也照翻（如 HN 的短标题）。
+    // 看段落里的节点而不是容器：HN 标题的段落容器是 <td>，白名单元素 .titleline 在它里面
+    if (this.classifier.includeSelector) {
+      return run.nodes.every((n) => {
+        if (!n.textContent?.trim()) return true;
+        const el = n.nodeType === Node.ELEMENT_NODE ? (n as Element) : n.parentElement;
+        return el !== null && this.classifier.isInsideIncluded(el);
+      });
+    }
     // 跳过界面文字是为了防止双语对照把按钮、导航撑乱；仅译文模式是原地替换，不会撑乱，照常翻译
-    if (manual || !this.settings.skipShortUI || this.settings.displayMode !== 'bilingual') return true;
+    if (!this.settings.skipShortUI || this.settings.displayMode !== 'bilingual') return true;
     return !looksLikeUIChrome(run.container, run.nodes, plain);
   }
 

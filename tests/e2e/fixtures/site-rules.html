@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Site Rules Fixture</title>
+  </head>
+  <body>
+    <!-- 仿 HN：e2e 构建里 localhost 有一条规则，只翻 .story-title / .comment-text，排除 .code-view -->
+    <table>
+      <tr><td class="rank">1.</td><td id="title-cell"><span class="story-title"><a href="#">A short story title</a> <span>(example.com)</span></span></td></tr>
+      <tr><td></td><td id="meta">42 points by someone 3 hours ago | hide | 10 comments</td></tr>
+    </table>
+    <div id="comhead">someone wrote this 2 hours ago | parent | next</div>
+    <div class="comment-text" id="comment">This comment body should be translated by the extension.
+      <div class="code-view" id="code">let answer = compute the value of everything;</div>
+    </div>
+  </body>
+</html>
