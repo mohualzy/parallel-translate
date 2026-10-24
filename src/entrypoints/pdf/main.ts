@@ -176,6 +176,8 @@ async function initFonts() {
 }
 
 async function openFile(file: File) {
+  // 换成本地文件后，「原文件」不再对应当前文档
+  $('#original').hidden = true;
   try {
     await load(await file.arrayBuffer(), file.name);
   } catch (err) {
