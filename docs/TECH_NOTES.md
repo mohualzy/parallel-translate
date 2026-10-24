@@ -140,3 +140,17 @@
 - WXT 的 `sidepanel` 入口会自动生成 Chrome 的 `side_panel.default_path`、`sidePanel` 权限，以及 Firefox 的 `sidebar_action`。
 - E2E 无法用 Playwright 打开真正的侧栏（需要用户手势），用标签页直接打开 `sidepanel.html` 测试页面逻辑。
 
+## PDF（pdf.js 6.4）
+
+- `page.commonObjs.get(fontName).name` 只有在 `getDocument({ fontExtraProperties: true })` 时才有值（原字体名如 `ABCDEF+CMMI10`），默认为了省内存不保留。
+- pdf.js 6 已移除 `isEvalSupported` 选项（不再用 eval）。图片解码（JPEG 2000 / JBIG2）和色彩管理用 wasm，扩展页面的 CSP 需要 `'wasm-unsafe-eval'`，否则解码失败。
+- 去字形：给渲染用的 2D 上下文实例覆盖 `fillText` / `strokeText`（实例属性优先于原型），渲染完 `delete` 掉恢复原型方法。pdf.js 默认用 FontFace + `fillText` 画字；Type3 字体用路径画，去不掉，可从 `commonObjs` 的 `isType3Font` 识别。
+- 版面分析的坑：
+  - 宽下标（d_model）会把一行断成两截；挂靠后要再合并一次同基线片段，两个方向都比较，因为基线差零点几像素时右边的片段可能排在前面。
+  - 根号等公式符号的基线不在本行，常夹在两行之间；判断挂靠到哪一行时，要排除和它水平重叠的正文行，再取垂直距离最近的。
+  - 行末分式的分子在行尾之后，挂靠时本行还没挂上后面的公式，右边界偏左，要放宽到行尾后 1.5 个字号。
+  - 没挂靠上的零星公式碎片不能触发「首行缩进分段」，否则段落会从中间被切开。
+- 原子的字形按文本项精确匹配（同基线、在该项水平范围内），不要按矩形区域取，会把旁边的正文带进来；空白字形不算进原子，否则左边界被前导空格拉远。
+- 调试版面分析：Node 24 能直接运行 TypeScript，`src/lib/pdf/layout.ts` 没有依赖，可以配合 `pdfjs-dist/legacy/build/pdf.mjs` 在 Node 里对真实 PDF 打印分块结果，不用开浏览器。
+- E2E 的测试 PDF 由 `tests/e2e/fixtures/sample-pdf.ts` 运行时生成（标准 14 字体，手算 xref 偏移），不往仓库放二进制。无头 Chromium 没有自带 PDF 阅读器，测弹窗按钮用一个地址以 `.pdf` 结尾的普通网页。
+
