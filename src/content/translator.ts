@@ -389,6 +389,7 @@ export class PageTranslator {
       // 同一段落被重新扫描（DOM 有变化但文本没变）：更新节点引用，必要时补回译文
       old.nodes = run.nodes;
       old.whole = run.whole;
+      old.decorations = run.decorations;
       for (const n of run.nodes) this.byNode.set(n, old);
       this.restoreView(old);
       if (this.enabled && old.state === 'idle') this.observe(old);
@@ -729,6 +730,7 @@ export class PageTranslator {
   /**
    * 仅译文模式：
    * - 段落占满容器：容器 font-size:0 隐藏原文文本节点，CSS 隐藏原文子元素，译文显式设回字号；
+   *   与段落并列的图标（装饰元素）不藏，打 data-ptx-keep 设回它原来的字号；
    * - 段落只占容器一部分（目录项后面跟着子目录、列表项编号后面跟着正文块）：容器里还有别的内容，不能整个藏。
    *   段落里只有元素（链接、行内标签）时给这些元素打 data-ptx-hide-node 直接隐藏；有裸文字时不包裹节点就藏不住，保持双语。
    */
@@ -740,6 +742,8 @@ export class PageTranslator {
           const cs = getComputedStyle(container);
           p.font = [cs.fontSize, cs.lineHeight];
           p.widthBeforeHide = widestLine(container);
+          // 图标保留显示：记下自己的字号，CSS 用它设回（容器字号归零后，按 em 定大小的图标会跟着缩没）
+          for (const el of p.decorations ?? []) el.setAttribute('data-ptx-keep', getComputedStyle(el).fontSize);
           container.setAttribute('data-ptx-hide', '');
         }
         if (p.font) {
@@ -758,6 +762,7 @@ export class PageTranslator {
       }
     }
     container.removeAttribute('data-ptx-hide');
+    for (const el of p.decorations ?? []) el.removeAttribute('data-ptx-keep');
     for (const el of p.hiddenNodes ?? []) el.removeAttribute('data-ptx-hide-node');
     p.hiddenNodes = undefined;
     p.el?.classList.remove('ptx-replace');

@@ -127,7 +127,10 @@ function measure(): Omit<SiteMetrics, 'url' | 'error'> {
   const bilingual = done.filter((t) => !t.parentElement!.hasAttribute('data-ptx-hide') && !t.classList.contains('ptx-replace'));
   const hidden = [
     ...document.querySelectorAll('[data-ptx-hide-node]'),
-    ...[...document.querySelectorAll('[data-ptx-hide]')].flatMap((el) => [...el.children].filter((c) => c.localName !== 'ptx-t')),
+    // 保留显示的图标（data-ptx-keep，D68）不算被藏
+    ...[...document.querySelectorAll('[data-ptx-hide]')].flatMap((el) =>
+      [...el.children].filter((c) => c.localName !== 'ptx-t' && !c.hasAttribute('data-ptx-keep')),
+    ),
   ];
   const CONTROL = 'button, label, input, select, textarea, summary, [role], [tabindex], [onclick], [contenteditable]';
   // 有真实地址的链接藏了没关系：译文里的链接副本会把点击转给它（D65）

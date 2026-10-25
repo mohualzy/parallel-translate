@@ -15,6 +15,12 @@
         </ul>
       </li>
     </ul>
+    <!-- 仿 GitHub 顶部导航：按钮里是「文字 + 块级图标」，图标按 em 定大小 -->
+    <nav>
+      <button type="button" id="icon-btn" style="display: flex; align-items: center; font-size: 20px">
+        Platform overview<svg id="icon-btn-svg" style="display: block; width: 1em; height: 1em" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" /></svg>
+      </button>
+    </nav>
     <!-- 仿单页应用：页面脚本拦截链接点击，自己处理路由（不整页跳转） -->
     <p id="spa-p"><a href="/dashboard" id="spa-link">Open the project dashboard</a></p>
     <script>

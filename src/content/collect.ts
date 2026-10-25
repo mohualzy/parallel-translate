@@ -1,4 +1,4 @@
-import { composedChildren, isParagraphBreak, type DomClassifier } from './dom';
+import { composedChildren, isDecoration, isParagraphBreak, type DomClassifier } from './dom';
 
 /**
  * 一个「行内片段」：某个块级容器下连续的行内子节点，即一个待翻译段落。
@@ -10,6 +10,8 @@ export interface Run {
   nodes: Node[];
   /** 片段是否覆盖容器的全部内容（决定仅译文模式能否隐藏原文） */
   whole: boolean;
+  /** whole 时容器里与片段并列的装饰元素（图标），仅译文模式隐藏原文时保留显示 */
+  decorations?: Element[];
 }
 
 /**
@@ -29,6 +31,7 @@ export function collectRuns(
     const own: Run[] = [];
     let current: Node[] = [];
     let sawBlock = false;
+    const decorations: Element[] = [];
     const flush = () => {
       if (current.length === 0) return;
       const run = { container: el, nodes: current, whole: false };
@@ -50,12 +53,22 @@ export function collectRuns(
         current.push(child);
         continue;
       }
-      sawBlock = true;
       flush();
+      // 没有文字的图标不算「容器里的别的内容」：「文字 + 图标」的按钮仍是整段
+      if (isDecoration(child as Element)) {
+        decorations.push(child as Element);
+        continue;
+      }
+      sawBlock = true;
       if (kind === 'block' && deep) visit(child as Element);
     }
     flush();
-    if (!sawBlock && own.length === 1) own[0]!.whole = true;
+    // 图标两侧的换行缩进会单独成片段，不算内容
+    const meaningful = own.filter((r) => r.nodes.some((n) => n.nodeType !== Node.TEXT_NODE || n.textContent?.trim()));
+    if (!sawBlock && meaningful.length === 1) {
+      meaningful[0]!.whole = true;
+      if (decorations.length > 0) meaningful[0]!.decorations = decorations;
+    }
   };
 
   const kind = classifier.classify(root);

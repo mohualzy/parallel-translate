@@ -1,5 +1,5 @@
 /*
- * 注入到所有网页的样式。只作用于本扩展的自定义元素（ptx-*）和 data-ptx-hide / data-ptx-hide-node 等属性，
+ * 注入到所有网页的样式。只作用于本扩展的自定义元素（ptx-*）和 data-ptx-hide / data-ptx-hide-node / data-ptx-keep 等属性，
  * 不影响页面原有元素的默认外观。
  */
 
@@ -149,8 +149,13 @@ ptx-t.ptx-error {
     text-justify: none !important;
   }
 
-  [data-ptx-hide] > :not(ptx-t) {
+  [data-ptx-hide] > :not(ptx-t):not([data-ptx-keep]) {
     display: none !important;
+  }
+
+  /* 与译文并列的图标（按钮里的箭头、放大镜）：保留显示，字号设回隐藏前的值（属性里记着，如 16px） */
+  [data-ptx-hide] > [data-ptx-keep] {
+    font-size: attr(data-ptx-keep type(<length>)) !important;
   }
 
   [data-ptx-hide] > ptx-t {

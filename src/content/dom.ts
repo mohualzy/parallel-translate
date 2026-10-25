@@ -88,6 +88,26 @@ function meaningfulSibling(node: Node, dir: 'previousSibling' | 'nextSibling'): 
   return cur;
 }
 
+/** 装饰元素里不能有的东西：表单控件、按钮、嵌入的媒体（这些要么能操作，要么本身就是内容） */
+const NOT_DECORATION = 'input,select,textarea,button,iframe,video,audio,canvas,object,embed';
+
+/** svg 之外是否有文字（svg 的 <title> 是图标的说明，不是要翻译的内容）；沿组合树走，shadow 宿主、<slot> 看投影进来的内容 */
+function hasTextOutsideSvg(el: Element): boolean {
+  for (const child of composedChildren(el)) {
+    if (child.nodeType === Node.TEXT_NODE && child.textContent?.trim()) return true;
+    if (child.nodeType === Node.ELEMENT_NODE && (child as Element).localName !== 'svg' && hasTextOutsideSvg(child as Element)) return true;
+  }
+  return false;
+}
+
+/**
+ * 装饰：没有文字的块级子元素，典型是按钮里的图标（设了 display:block 的 svg、包着 svg 的 flex 容器）、空的分隔块。
+ * 它们不打断段落：「文字 + 图标」的按钮仍算整段，仅译文模式能整段隐藏原文；图标本身原样保留显示（data-ptx-keep）。
+ */
+export function isDecoration(el: Element): boolean {
+  return !hasTextOutsideSvg(el) && !el.matches(NOT_DECORATION) && !el.querySelector(NOT_DECORATION);
+}
+
 /**
  * 连续两个 <br>（中间只有空白）视为段落分隔，单个 <br> 仍是段内换行。
  * 用 <br><br> 分段的页面（论坛、老式博客）因此能逐段对照，而不是整篇成一段。

@@ -39,6 +39,22 @@ describe('collectRuns', () => {
     expect(child?.whole).toBe(true);
   });
 
+  it('没有文字的块级图标不打断段落：「文字 + 图标」仍是整段，图标记为装饰', () => {
+    setup(`
+      <div id="btn">Platform<div class="icon"><svg><title>Open menu</title></svg></div></div>
+      <div id="two">Before<div class="icon"><svg></svg></div>After</div>
+      <div id="ctl">Theme<div><input type="checkbox"></div></div>
+    `);
+    const runs = collectRuns(document.body, classifier);
+    const btn = runs.find((r) => r.container.id === 'btn');
+    expect(btn?.whole).toBe(true);
+    expect(btn?.decorations?.map((e) => e.className)).toEqual(['icon']);
+    // 图标两侧都有文字：仍是两段，都不算整段
+    expect(runs.filter((r) => r.container.id === 'two').map((r) => r.whole)).toEqual([false, false]);
+    // 装着表单控件的块不是装饰
+    expect(runs.find((r) => r.container.id === 'ctl')?.whole).toBe(false);
+  });
+
   it('跳过代码块、脚本、隐藏元素和排除区域', () => {
     setup(`
       <p>Visible text</p>

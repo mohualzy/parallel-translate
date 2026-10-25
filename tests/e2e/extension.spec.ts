@@ -643,6 +643,30 @@ test('仅译文模式：带交互的元素（label）不部分隐藏、照常可
   await page.close();
 });
 
+test('仅译文模式：按钮里「文字 + 块级图标」整段替换文字，图标保留且大小不变；切回双语后标记清除', async () => {
+  await setSettings({ displayMode: 'translation' });
+  const page = await context.newPage();
+  try {
+    await page.goto(`${server.url}/interactive.html`);
+    await toggle(page);
+    const button = page.locator('#icon-btn');
+    const icon = page.locator('#icon-btn-svg');
+    await expect(button.locator('> ptx-t')).toHaveText('【译】Platform overview');
+    await expect(button).toHaveAttribute('data-ptx-hide', '');
+    // 图标不藏：按钮字号归零后，1em 的图标靠记下的字号保持 20px
+    await expect(icon).toHaveAttribute('data-ptx-keep', '20px');
+    await expect(icon).toBeVisible();
+    expect(await icon.evaluate((el) => Math.round(el.getBoundingClientRect().width))).toBe(20);
+    // 译文占原文的位置：在图标前面
+    expect(await button.locator('> ptx-t').evaluate((el) => el.nextElementSibling?.id)).toBe('icon-btn-svg');
+  } finally {
+    await setSettings({ displayMode: 'bilingual' });
+  }
+  await expect(page.locator('#icon-btn')).not.toHaveAttribute('data-ptx-hide', '');
+  await expect(page.locator('#icon-btn-svg')).not.toHaveAttribute('data-ptx-keep');
+  await page.close();
+});
+
 test('仅译文模式：段落只占容器一部分、且含裸文字（「Parent item」+ 子列表）时藏不住，保持双语', async () => {
   await setSettings({ displayMode: 'translation' });
   const page = await context.newPage();
