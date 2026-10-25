@@ -36,6 +36,7 @@ const highlightPanel = setupHighlightPanel($<HTMLButtonElement>('#hl-toggle'), (
       entries: () => v.highlightEntries(),
       reveal: (id) => v.revealHighlight(id),
       remove: (id) => void v.removeHighlight(id),
+      clear: () => void v.clearHighlights(),
       meta: () => docMeta,
     }
   );

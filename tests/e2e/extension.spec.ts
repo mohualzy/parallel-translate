@@ -1471,6 +1471,33 @@ test('PDF 阅读器：译文页文字可选中、复制；Ctrl+F 查找跨行的
   await expect(toggle).toHaveText('强调 0');
   await expect(panel).toContainText('强调会列在这里');
   await expect.poll(stored).toEqual([]);
+  await expect(panel.getByRole('button', { name: '全部清除' })).toBeDisabled();
+
+  // 一键全部清除：先确认；取消则不动，确认后全部清掉、画布上的颜色也没了
+  await selectTitle();
+  await bar.locator('[data-style="yellow"]').click();
+  await page.evaluate(() => {
+    const span = [...document.querySelectorAll('.page[data-page="1"] .slot.translated .text-layer span')].find((s) => s.textContent!.includes('Reading papers'))!;
+    const range = document.createRange();
+    range.selectNodeContents(span.closest('.tl-block')!);
+    getSelection()!.removeAllRanges();
+    getSelection()!.addRange(range);
+    document.querySelector('#pages')!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+  await bar.locator('[data-style="pink"]').click();
+  await expect(toggle).toHaveText('强调 2');
+  const clearAll = panel.getByRole('button', { name: '全部清除' });
+  page.once('dialog', (d) => void d.dismiss());
+  await clearAll.click();
+  await expect(toggle).toHaveText('强调 2');
+  page.once('dialog', (d) => {
+    expect(d.message()).toContain('全部 2 条强调');
+    void d.accept();
+  });
+  await clearAll.click();
+  await expect(toggle).toHaveText('强调 0');
+  await expect.poll(stored).toEqual([]);
+  await expect.poll(yellow).toBe(0);
   expect(errors).toEqual([]);
   await page.close();
 });

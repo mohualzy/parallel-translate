@@ -1,11 +1,13 @@
 import { highlightsMarkdown, STYLE_LABELS, type HighlightEntry } from '@/lib/pdf/highlights';
 
-/** 强调面板：按阅读顺序列出这篇文档的强调，点一条跳过去；可删除单条、导出 Markdown */
+/** 强调面板：按阅读顺序列出这篇文档的强调，点一条跳过去；可删除单条、一键全部清除、导出 Markdown */
 
 export interface HighlightPanelSource {
   entries(): (HighlightEntry & { id: string })[];
   reveal(id: string): void;
   remove(id: string): void;
+  /** 清除全部强调 */
+  clear(): void;
   /** 导出时的标题和来源（文件地址或文件名） */
   meta(): { title: string; from: string };
 }
@@ -33,6 +35,11 @@ export function setupHighlightPanel(toggle: HTMLButtonElement, getSource: () => 
   download.type = 'button';
   download.className = 'btn';
   download.textContent = '导出 .md';
+  const clearAll = document.createElement('button');
+  clearAll.type = 'button';
+  clearAll.className = 'btn';
+  clearAll.textContent = '全部清除';
+  clearAll.title = '清除这篇文档的全部强调';
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'btn';
@@ -40,7 +47,7 @@ export function setupHighlightPanel(toggle: HTMLButtonElement, getSource: () => 
   close.setAttribute('aria-label', '关闭强调面板');
   const head = document.createElement('div');
   head.className = 'hl-panel-head';
-  head.append(title, copy, download, close);
+  head.append(title, copy, download, clearAll, close);
   const list = document.createElement('div');
   list.className = 'hl-list';
   panel.append(head, list);
@@ -57,7 +64,7 @@ export function setupHighlightPanel(toggle: HTMLButtonElement, getSource: () => 
     const entries = getSource()?.entries() ?? [];
     toggle.textContent = `强调 ${entries.length}`;
     title.textContent = `强调（${entries.length}）`;
-    copy.disabled = download.disabled = entries.length === 0;
+    copy.disabled = download.disabled = clearAll.disabled = entries.length === 0;
     if (panel.hidden) return;
     if (entries.length === 0) {
       const empty = document.createElement('p');
@@ -112,6 +119,13 @@ export function setupHighlightPanel(toggle: HTMLButtonElement, getSource: () => 
   close.addEventListener('click', () => {
     panel.hidden = true;
     toggle.setAttribute('aria-pressed', 'false');
+  });
+  // 删了找不回来，先确认
+  clearAll.addEventListener('click', () => {
+    const source = getSource();
+    const n = source?.entries().length ?? 0;
+    if (!source || n === 0 || !confirm(`清除这篇文档的全部 ${n} 条强调？清除后不能恢复。`)) return;
+    source.clear();
   });
   copy.addEventListener('click', () => {
     void navigator.clipboard.writeText(markdown()).then(() => {

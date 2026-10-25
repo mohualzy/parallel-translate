@@ -478,6 +478,15 @@ export class PdfViewer {
     await saveHighlights(this.docId, this.highlights);
   }
 
+  /** 一键清除这篇文档的全部强调（强调面板「全部清除」），重画涉及的页 */
+  async clearHighlights() {
+    const pages = new Set(this.highlights.map((h) => h.page));
+    this.highlights = [];
+    for (const index of pages) this.redraw(this.pages[index - 1]!);
+    this.onHighlightsChange?.();
+    await saveHighlights(this.docId, this.highlights);
+  }
+
   /**
    * 强调列表，按阅读顺序：页码、块在页内的顺序、块内位置。
    * 这一页本次打开后看过才知道块的顺序和原文，没看过的页按保存时的偏移排、不带原文。
