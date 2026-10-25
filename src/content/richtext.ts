@@ -98,6 +98,12 @@ const TOKEN = /<(\/?)([gx])(\d+)\s*(\/?)>/g;
  * - 未知编号的标签丢弃，保留文字；未闭合的 <gN> 在末尾自动闭合；孤立的 </gN> 忽略
  * - <xN> 无论模型写成 <xN/>、<xN>…</xN> 还是只写开标签，都替换为原元素
  */
+/**
+ * 译文里浅克隆出来的格式元素（链接等）→ 原元素。克隆只带属性、不带页面脚本绑定的事件：
+ * 点译文里的链接时转给原元素去点（单页应用的路由、展开菜单都绑在原元素上）。
+ */
+export const cloneSources = new WeakMap<Element, Element>();
+
 export function deserialize(translated: string, refs: Element[], doc: Document): DocumentFragment {
   // 先把 <xN>…</xN> 归一成 <xN/>，模型在里面写了什么都不要
   const normalized = translated.replace(/<x(\d+)\s*>[\s\S]*?<\/x\1\s*>/g, '<x$1/>');
@@ -128,6 +134,7 @@ export function deserialize(translated: string, refs: Element[], doc: Document):
       continue;
     }
     const clone = cloneShallow(ref);
+    cloneSources.set(clone, ref);
     top().appendChild(clone);
     stack.push({ node: clone, tag });
   }

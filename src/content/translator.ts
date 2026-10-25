@@ -6,7 +6,7 @@ import { findSiteRule } from '@/lib/site-rules';
 import { collectRuns, runContainsPoint, type Run } from './collect';
 import { buildExcludeSelector, composedParent, CONTENT_CONTAINERS, DomClassifier, looksLikeUIChrome, OWN_TAG } from './dom';
 import { pageAutoProfile, pageContext, pageProfile } from './page-context';
-import { deserialize, sameText, serialize } from './richtext';
+import { cloneSources, deserialize, sameText, serialize } from './richtext';
 import { ensureShadowStyles } from './shadow-styles';
 import { TitleTranslator } from './title';
 import { TRANSLATING_ATTR } from './lifecycle';
@@ -812,12 +812,26 @@ export class PageTranslator {
   }
 
   private onClick(e: MouseEvent) {
-    const view = (e.target as Element | null)?.closest?.(`${OWN_TAG}.ptx-error`);
+    const target = e.target as Element | null;
+    const view = target?.closest?.(`${OWN_TAG}.ptx-error`);
     const p = view && this.byView.get(view);
-    if (!p) return;
-    e.preventDefault();
-    e.stopPropagation();
-    this.retryFailed();
+    if (p) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.retryFailed();
+      return;
+    }
+    // 点译文里的链接副本：转给原链接去点。副本没有页面脚本绑定的事件，单页应用的路由会退化成整页跳转，
+    // 只靠脚本处理的链接（href="#"）干脆没反应。带修饰键（新标签页打开等）交给浏览器按副本的 href 处理
+    if (!target?.closest?.(OWN_TAG) || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    for (let el: Element | null = target; el && el.localName !== OWN_TAG; el = el.parentElement) {
+      const source = cloneSources.get(el);
+      if (!source?.isConnected || !(source instanceof HTMLElement)) continue;
+      e.preventDefault();
+      e.stopPropagation();
+      source.click();
+      return;
+    }
   }
 
   // ---------- 动态内容 ----------
