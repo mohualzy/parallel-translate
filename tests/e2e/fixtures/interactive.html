@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Interactive page</title>
+  </head>
+  <body>
+    <!-- 仿 Kubernetes 侧栏：复选框 + label 控制子列表展开，label 不能被藏起来 -->
+    <ul>
+      <li id="side-sec">
+        <input type="checkbox" id="side-toggle" />
+        <label for="side-toggle" id="side-label">Concepts and architecture</label>
+        <ul>
+          <li id="side-sub"><a href="/overview" id="side-sub-link">Overview of the system</a></li>
+        </ul>
+      </li>
+    </ul>
+    <!-- 仿单页应用：页面脚本拦截链接点击，自己处理路由（不整页跳转） -->
+    <p id="spa-p"><a href="/dashboard" id="spa-link">Open the project dashboard</a></p>
+    <script>
+      document.getElementById('spa-link').addEventListener('click', (e) => {
+        e.preventDefault();
+        document.body.dataset.routed = (Number(document.body.dataset.routed) || 0) + 1;
+      });
+    </script>
+  </body>
+</html>

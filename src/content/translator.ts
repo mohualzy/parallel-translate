@@ -66,6 +66,25 @@ function classifierFor(settings: Settings): DomClassifier {
 }
 
 /** 元素是否渲染出来了（自身或祖先 display:none、visibility:hidden 时为否）；display:contents 没有盒子，按可见处理 */
+/** 带交互的元素：隐藏后它的图标（CSS 伪元素画的展开三角）和行为（展开菜单、切换侧栏分组）都会跟着消失 */
+const INTERACTIVE = 'label,button,summary,input,select,textarea,[role],[tabindex],[onclick],[contenteditable]';
+/** 只靠脚本处理点击的链接：没有地址、地址是单独的 #、javascript:（页内锚点 #section 是正常链接） */
+const isScriptLink = (a: Element) => {
+  const href = a.getAttribute('href')?.trim() ?? '';
+  return href === '' || href === '#' || /^javascript:/i.test(href);
+};
+
+/**
+ * 仅译文模式下「部分隐藏」能直接藏起来的元素：有真实地址的链接、纯排版的行内标签（及其内部）。
+ * 带交互的元素、只靠脚本处理点击的链接不藏，这一段保持双语（实测：Kubernetes 侧栏分组标题、
+ * Wikipedia 的语言菜单都是 <label>，藏起来后展开三角和点击都没了）。
+ */
+function isPlainContent(el: Element): boolean {
+  if (el.matches(INTERACTIVE) || el.querySelector(INTERACTIVE)) return false;
+  const links = [...(el.localName === 'a' ? [el] : []), ...el.querySelectorAll('a')];
+  return !links.some(isScriptLink);
+}
+
 /** 元素最宽的一行：块级元素就是盒子宽度；行内元素跨多行时盒子只代表最后一行，要看每一行的片段 */
 function widestLine(el: Element): number {
   return Math.max(0, ...Array.from(el.getClientRects(), (r) => r.width));
@@ -731,7 +750,7 @@ export class PageTranslator {
       }
       const elements = p.nodes.filter((n): n is Element => n.nodeType === Node.ELEMENT_NODE);
       const bareText = p.nodes.some((n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim());
-      if (elements.length > 0 && !bareText) {
+      if (elements.length > 0 && !bareText && elements.every(isPlainContent)) {
         for (const el of elements) el.setAttribute('data-ptx-hide-node', '');
         p.hiddenNodes = elements;
         p.el.classList.add('ptx-replace');

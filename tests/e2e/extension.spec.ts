@@ -619,6 +619,30 @@ test('仅译文模式（仿 arXiv）：层里 !important 的标题字号也能�
   await page.close();
 });
 
+test('仅译文模式：带交互的元素（label）不部分隐藏、照常可点；点译文里的链接副本转给原链接（单页应用路由照常）', async () => {
+  await setSettings({ displayMode: 'translation' });
+  const page = await context.newPage();
+  try {
+    await page.goto(`${server.url}/interactive.html`);
+    await toggle(page);
+    // 复选框 + label：label 不藏（藏起来展开三角和点击都没了），这一段保持双语
+    await expect(page.locator('#side-sec > ptx-t')).toContainText('Concepts and architecture');
+    await expect(page.locator('#side-label')).not.toHaveAttribute('data-ptx-hide-node', '');
+    await expect(page.locator('#side-label')).toBeVisible();
+    await page.locator('#side-label').click();
+    await expect(page.locator('#side-toggle')).toBeChecked();
+
+    // 整段隐藏的链接：点译文里的副本，原链接上页面脚本绑的处理函数照常执行，不整页跳转
+    await expect(page.locator('#spa-p')).toHaveAttribute('data-ptx-hide', '');
+    await page.locator('#spa-p > ptx-t a').click();
+    await expect(page.locator('body')).toHaveAttribute('data-routed', '1');
+    expect(page.url()).toBe(`${server.url}/interactive.html`);
+  } finally {
+    await setSettings({ displayMode: 'bilingual' });
+  }
+  await page.close();
+});
+
 test('仅译文模式：段落只占容器一部分、且含裸文字（「Parent item」+ 子列表）时藏不住，保持双语', async () => {
   await setSettings({ displayMode: 'translation' });
   const page = await context.newPage();
