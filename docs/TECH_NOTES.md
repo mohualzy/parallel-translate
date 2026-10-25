@@ -175,6 +175,8 @@
 - 行内分数线、根号横线是底图（去字形后的画布）上的矢量线，不在文字层里；搬公式原子要连同底图上该区域一起搬（D58）。CMEX 的根号字形从基线往下挂，估原子上下范围时要单独处理，横线和根号顶端齐平。
 - declarativeNetRequest 的 `responseHeaders` / `excludedResponseHeaders` 条件可以配合 `redirect`（Chrome 148 实测），按 `content-type` 把 PDF 主框架请求换成扩展页面，不经过自带查看器、不多历史记录。重定向目标要在 `web_accessible_resources` 里；设 `use_dynamic_url: true` 后 `runtime.getURL` 的静态地址仍可作为 DNR 重定向目标，但网页 iframe / 跳转到静态地址会被拦。Playwright 的 `page.goto` 相当于地址栏输入，测「网页能否访问」要在页面里 `location.href = …` 或建 iframe。
 - 无头 Chromium 148 带 PDF 查看器，打开 PDF 地址不会变成下载。
+- 本地 `file://` PDF：内容脚本（`<all_urls>`、`file:///*`）会注入浏览器 PDF 查看器的外壳文档，`document.contentType` 是 `application/pdf`；但从 `file://` 页面跳转到扩展页面（`location.replace`，静态或动态地址）一律被拦成 `chrome-error`，只能由后台 `tabs.update`。`webNavigation.onBeforeNavigate` 里改道也赶不上：本地文件加载太快，PDF 已经提交进历史（D67）。
+- `use_dynamic_url: true` 时，后台和内容脚本里的 `runtime.getURL` 都返回动态地址（`chrome-extension://<随机 UUID>/…`），导航过去后页面地址显示为静态 id。命令行 `--load-extension` 加载的扩展默认有文件网址访问权限，用户安装的要手动打开。
 - 恢复滚动位置要等工具栏渲染完：sticky 工具栏仍在文档流里，变高会把页面往下推。阅读器自己管理位置时设 `history.scrollRestoration = 'manual'`。
 - pdf.js `page.render` 默认（`intent: 'display'`）用 `requestAnimationFrame` 分段推进，后台标签页里不执行，渲染会一直等着；离屏导出用 `intent: 'print'`。`<dialog>` 的 `close` 事件在后台标签页里也可能被拖延，关键逻辑直接放在按钮点击里。
 - MathML `<math>` 的计算 display：行内是 `math`，行间是 `block math`。按 `display.startsWith('inline')` 判断行内会把行内公式当成块级。
@@ -182,10 +184,12 @@
 - `!important` 声明的层叠顺序和普通声明相反：层里的优先于不在层里的，越早声明的层越优先。页面把样式放进 `@layer` 并写 `!important` 时，扩展不在层里的 `!important` 会输；扩展注入的样式表排在页面之前，把规则放进自己的层就能压过去。
 - 两端对齐（`text-align: justify`）时，字号为 0 的文字里的空格仍参与分配每行空余；`text-justify: none` 让它们不参与。
 - 探测真实网页的内容脚本行为：在系统临时目录写 Playwright 用例（`NODE_PATH` 指向项目的 `node_modules`，从项目里 import mock 服务），加载 e2e 构建、用 mock 翻译，不花 API 费用。
-- 内容脚本改动要做多站点回归：同一个探测用例在一组真实网站上跑改动前后两个构建（改动前用 `git worktree add <临时目录> <提交>` 构建 e2e 版，`node_modules` 用目录联接指向主仓库），对比双语残留、隐藏后字号、部分隐藏的元素、横向溢出，再看截图。清理 worktree 前先 `rmdir` 掉 `node_modules` 联接本身，否则 `git worktree remove` 可能顺着联接删到主仓库的依赖。
+- 内容脚本改动要做多站点回归：`just sweep <改动前的提交>`（`tests/sweep/run.ts`）在临时 git worktree 里装依赖、构建基线的 e2e 版，与当前代码在同一组真实网站上逐站对比双语残留、隐藏后字号、部分隐藏的元素、被藏掉的控件、横向溢出，报告和截图在 `test-results/sweep/`。worktree 用 `fs.rmSync` 删（不顺着 `node_modules` 里的联接删到外面），再 `git worktree prune`。
+- 系统临时目录在用户主目录下，主目录有 `pnpm-workspace.yaml` 时，在临时目录里 `pnpm install` 会把整个主目录当 workspace 去装（本机实测扫到 461 个项目，因为没有 TTY 才中止）。在临时目录装依赖一律加 `--ignore-workspace`。
+- `just` 的参数按位置传：`just sweep base=HEAD` 会把整个 `base=HEAD` 当成第一个参数的值。
 - 译文里的格式元素是原元素的浅克隆（`cloneNode(false)`），带属性、不带页面脚本绑定的事件；框架在根节点代理的事件按 fiber 找处理函数，克隆体也找不到。要保留行为只能把点击转给原元素。
 - 中文字体族名因平台而异：Windows 上的 Noto 是 `Noto Serif SC` / `Noto Sans SC`，Linux 发行版常见 `Noto Serif CJK SC`，字体栈两种都要写。可用 PowerShell `System.Drawing.Text.PrivateFontCollection` 读字体文件的族名核对。
-- `queryLocalFonts()`（Local Font Access）在扩展页面可用，返回的族名是英文（`Microsoft YaHei`、`SimSun`），canvas 直接可用。未授权时不报错，返回空数组；授权状态用 `navigator.permissions.query({ name: 'local-fonts' })` 查。浏览器第一次枚举字体要约 3 秒，之后几十毫秒。
+- `queryLocalFonts()`（Local Font Access）在扩展页面可用，返回的族名是英文（`Microsoft YaHei`、`SimSun`），canvas 直接可用。未授权时不报错，返回空数组；授权状态用 `navigator.permissions.query({ name: 'local-fonts' })` 查。浏览器第一次枚举字体要约 3 秒，之后几十毫秒。页面不可见（后台标签页）时调用会抛错 `Page needs to be visible`，要等 `visibilitychange` 到可见再读。
 - Playwright 给扩展页授权 `local-fonts` 不能带 `origin`（报「opaque origins」），要用不带 origin 的 `context.grantPermissions(['local-fonts'])`。
 - 调试版面分析：Node 24 能直接运行 TypeScript，`src/lib/pdf/layout.ts` 没有依赖，可以配合 `pdfjs-dist/legacy/build/pdf.mjs` 在 Node 里对真实 PDF 打印分块结果，不用开浏览器。
 - E2E 的测试 PDF 由 `tests/e2e/fixtures/sample-pdf.ts` 运行时生成（标准 14 字体，手算 xref 偏移），不往仓库放二进制。无头 Chromium 没有自带 PDF 阅读器，测弹窗按钮用一个地址以 `.pdf` 结尾的普通网页。
