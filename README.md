@@ -109,3 +109,8 @@ Reason: 加载真实扩展、用本地 mock 模型服务跑端到端测试
 just e2e-live
 ```
 Reason: 用真实 DeepSeek API 验证模型遵守分段/占位协议（需要环境变量 `DEEPSEEK_API_KEY`，会产生几分钱费用；未设置时自动跳过）
+
+```bash
+just sweep HEAD~1
+```
+Reason: 在十几个真实网站上用 mock 翻译跑仅译文模式，把当前代码和上一个提交的构建逐站对比，报告在 `test-results/sweep/report.md`（需要联网，不花 API 费用）

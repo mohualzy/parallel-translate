@@ -34,6 +34,10 @@ e2e: build-e2e
 e2e-live: build-e2e
     pnpm exec playwright test -c playwright.live.config.ts
 
+# 多站点回归检查：真实网站 + mock 翻译跑仅译文模式，与 base 提交的构建逐站对比（需联网；省略 base 只跑当前代码；sites 用逗号分隔，名字见 tests/sweep/sites.ts）
+sweep base="" sites="":
+    node tests/sweep/run.ts --base={{base}} --sites={{sites}}
+
 # 打包 zip
 zip:
     pnpm zip
