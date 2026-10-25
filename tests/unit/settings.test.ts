@@ -41,6 +41,12 @@ describe('createProvider', () => {
     expect(JSON.parse(p.extraBody)).toEqual({ thinking: { type: 'disabled' } });
     expect(createProvider().extraBody).toBe('');
   });
+
+  it('本地 llama.cpp 预设的并发数与服务端并发槽一致', () => {
+    const llama = PROVIDER_PRESETS.find((p) => p.label === 'llama.cpp（本地）')!;
+    expect(createProvider(llama).maxConcurrent).toBe(2);
+    expect(createProvider().maxConcurrent).toBe(3);
+  });
 });
 
 describe('matchSite', () => {

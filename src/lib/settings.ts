@@ -115,6 +115,8 @@ export interface ProviderPreset {
   modelHint: string;
   /** 新建该服务时默认填入的额外请求参数 */
   extraBody?: string;
+  /** 新建该服务时的默认并发数（本地服务受并发槽数限制） */
+  maxConcurrent?: number;
 }
 
 /** 常见 OpenAI 兼容服务的 Base URL；模型名不写死（会过时），用「获取模型列表」拉取 */
@@ -134,6 +136,8 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   { label: 'OpenRouter', baseURL: 'https://openrouter.ai/api/v1', modelHint: 'google/gemini-2.0-flash-001' },
   { label: 'Google Gemini', baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai', modelHint: 'gemini-2.0-flash' },
   { label: 'Ollama（本地）', baseURL: 'http://localhost:11434/v1', modelHint: 'qwen2.5:7b' },
+  // llama.cpp llama-server：思考在服务端用 --reasoning off 关闭；并发数对应启动参数 --parallel
+  { label: 'llama.cpp（本地）', baseURL: 'http://127.0.0.1:8080/v1', modelHint: 'qwen3.5-9b', maxConcurrent: 2 },
   { label: '自定义', baseURL: '', modelHint: '' },
 ];
 
@@ -146,7 +150,7 @@ export function createProvider(preset?: ProviderPreset): ProviderConfig {
     apiKey: '',
     model: '',
     temperature: 0.3,
-    maxConcurrent: 3,
+    maxConcurrent: preset?.maxConcurrent ?? 3,
     timeoutMs: 90_000,
     stream: true,
     prompt: '',

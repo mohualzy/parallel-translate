@@ -3,7 +3,7 @@
 自用的网页双语对照翻译扩展，翻译服务用你自己的大模型 API。
 
 - **双语对照**：译文插在每段原文下方，保留链接、加粗、行内代码；也可切换「仅译文」
-- **自带模型**：任何 OpenAI 兼容接口——DeepSeek、通义千问、Kimi、智谱、硅基流动、OpenRouter、Gemini、OpenAI、本地 Ollama
+- **自带模型**：任何 OpenAI 兼容接口——DeepSeek、通义千问、Kimi、智谱、硅基流动、OpenRouter、Gemini、OpenAI、本地 Ollama / llama.cpp
 - **省钱**：只翻译滚动到的部分；多段合并成一次请求；译文缓存 30 天，重复访问不再计费
 - **悬停翻译**：鼠标停在段落上单按一下 Ctrl，只翻译这一段
 - **划词翻译**：选中文字旁出现「译」按钮；单词给音标、释义和语境含义，句子给译文，逐字流式显示
@@ -81,6 +81,7 @@ Reason: 构建 Chrome/Edge 版到 `.output/chrome-mv3`
 - **某些页面无法翻译**：浏览器内置页面（`chrome://`）、扩展商店不允许扩展运行；本地文件（`file://`）需要在扩展详情里打开「允许访问文件网址」。
 - **按钮、导航没有被翻译**：双语对照模式默认跳过短的界面文字和按钮，避免撑乱布局；切换到「仅译文」模式会原地翻译它们（按钮照常可点）。也可以悬停按 Ctrl 单独翻译，或在设置里关闭「双语对照时跳过…」。
 - **Ollama 返回 403**：Ollama 默认拒绝来自扩展的请求，启动前设置环境变量 `OLLAMA_ORIGINS=chrome-extension://*`。
+- **本地 llama.cpp（llama-server）**：选「llama.cpp（本地）」预设，地址 `http://127.0.0.1:8080/v1`，并发数默认 2，需与启动参数 `--parallel` 一致；服务端设了 `--api-key` 时把同一个密钥填进 API Key。Qwen3.5 等模型默认会思考，在服务端用 `--reasoning off` 关闭。
 - **DeepSeek**：当前模型是 `deepseek-flash` / `deepseek-v4-pro`，默认会推理。预设已自动填好 `{"thinking": {"type": "disabled"}}`，实测输出 token 减少约 75%；手动添加时记得加上。
 - **推理模型太慢、太贵**：在「高级选项 → 额外请求参数」里关闭思考，参数名因服务而异，例如通义 `{"enable_thinking": false}`、Ollama `{"think": false}`、OpenAI `{"reasoning_effort": "minimal"}`，以服务商文档为准。
 - **偶尔有段落漏翻**：弱模型可能漏掉批量中的个别段落，扩展会自动逐段补翻；仍失败时点击重试，或在设置里调小「每次请求最多段落数」。
