@@ -1,6 +1,10 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { chromium, expect, test, type BrowserContext, type Page, type Worker } from '@playwright/test';
 import type { browser } from 'wxt/browser';
+import { samplePdf } from './fixtures/sample-pdf';
 import { startMockServer, type MockServer } from './mock-server';
 
 // sw.evaluate 的回调运行在扩展的 Service Worker 里，那里有全局 chrome
@@ -1723,6 +1727,46 @@ test('PDF 自动打开：开关打开后，不带 .pdf 后缀的 PDF 地址直�
 
   await setAutoOpen(false);
   await expect.poll(dynamicRules).toEqual([]);
+});
+
+test('PDF 自动打开：本地 file:// PDF 进阅读器；后退回到打开前的页面、前进回到阅读器（跳过 PDF 那条历史）；「原文件」放行不再转回', async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'ptx-e2e-'));
+  const file = path.join(dir, '本地 论文.pdf');
+  writeFileSync(file, samplePdf());
+  const fileUrl = pathToFileURL(file).href;
+  const reader = `chrome-extension://${extensionId}/pdf.html#${fileUrl}`;
+  await setSettings({ pdfAutoOpen: true });
+  const page = await context.newPage();
+  try {
+    await page.goto(`${server.url}/page.html`);
+    // 模拟在地址栏打开、拖进浏览器：网页自己跳不到 file://，由扩展发起导航
+    await sw.evaluate(
+      async ({ from, to }) => {
+        const tab = (await chrome.tabs.query({})).find((t) => t.url === from)!;
+        await chrome.tabs.update(tab.id!, { url: to });
+      },
+      { from: page.url(), to: fileUrl },
+    );
+    await expect(page).toHaveURL(reader);
+    await expect(page.locator('#progress')).toContainText('已翻译 2 / 2 页');
+    // PDF 那条历史还在：后退到它时接着后退，回到打开前的页面；前进到它时接着前进，回到阅读器
+    // （用 history 而不是 page.goBack：中途那次导航会被立刻接着走掉，goBack 等不到它加载完）
+    await page.evaluate(() => history.back());
+    await expect(page).toHaveURL(`${server.url}/page.html`);
+    await page.evaluate(() => history.forward());
+    await expect(page).toHaveURL(reader);
+    await expect(page.locator('#progress')).toContainText('已翻译 2 / 2 页');
+
+    // 「原文件」：本标签页放行这个文件，交给浏览器自带的查看器，不会再被转回阅读器
+    await page.locator('#original').click();
+    await expect(page).toHaveURL(fileUrl);
+    await page.waitForTimeout(500);
+    await expect(page).toHaveURL(fileUrl);
+  } finally {
+    await setSettings({ pdfAutoOpen: false });
+    rmSync(dir, { recursive: true, force: true });
+  }
+  await page.close();
 });
 
 test('PDF 阅读器：弹窗在 PDF 页面上显示「用双语阅读器打开此 PDF」，点击后本标签页换成阅读器', async () => {

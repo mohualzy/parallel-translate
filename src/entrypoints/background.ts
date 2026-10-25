@@ -10,7 +10,17 @@ import {
   translateSelection,
   translateText,
 } from '@/background/translate';
-import { AUTO_OPEN_RULE_ID, autoOpenRule, BYPASS_RULE_BASE, bypassRule } from '@/lib/pdf/auto-open';
+import {
+  AUTO_OPEN_RULE_ID,
+  autoOpenRule,
+  BYPASS_RULE_BASE,
+  bypassLocalPdf,
+  bypassRule,
+  EMPTY_LOCAL_PDF_STATE,
+  localPdfAction,
+  showingLocalPdf,
+  type LocalPdfState,
+} from '@/lib/pdf/auto-open';
 import { PDF_LINK_PATTERNS, viewerUrl } from '@/lib/pdf/url';
 import { getSettings, onSettingsChanged } from '@/lib/settings';
 import { openSidePanel, PENDING_TEXT_KEY } from '@/lib/side-panel';
@@ -61,6 +71,11 @@ async function handle(
     case 'open-original-pdf':
       if (tabId !== undefined) await openOriginalPdf(tabId, request.url);
       return null;
+    case 'local-pdf-loaded':
+      return localPdfLoaded(tabId, request.url, request.traverse);
+    case 'local-pdf-shown':
+      if (tabId !== undefined) await saveLocalPdfState(showingLocalPdf(await localPdfState(), tabId, request.url));
+      return null;
     case 'clear-cache':
       await cache.clear();
       return null;
@@ -80,8 +95,29 @@ async function syncAutoOpen(enabled: boolean) {
   });
 }
 
+/** 本地 PDF 自动打开的状态（D67），存 storage.session：后台重启后仍在，浏览器关掉即清空 */
+const LOCAL_PDF_KEY = 'localPdf';
+const localPdfState = async () =>
+  ((await browser.storage.session.get(LOCAL_PDF_KEY))[LOCAL_PDF_KEY] as LocalPdfState | undefined) ?? EMPTY_LOCAL_PDF_STATE;
+const saveLocalPdfState = (state: LocalPdfState) => browser.storage.session.set({ [LOCAL_PDF_KEY]: state });
+
+/** 本地 PDF 页面加载（local-pdf 内容脚本发来）：要转进阅读器时直接换掉标签页，前进后退时告诉页面接着往哪走 */
+async function localPdfLoaded(tabId: number | undefined, url: string, traverse: boolean): Promise<'back' | 'forward' | null> {
+  if (tabId === undefined || !(await getSettings()).pdfAutoOpen) return null;
+  const { action, state } = localPdfAction(await localPdfState(), tabId, url, traverse);
+  await saveLocalPdfState(state);
+  if (action !== 'open') return action;
+  await browser.tabs.update(tabId, { url: `${browser.runtime.getURL('/pdf.html')}#${url}` });
+  return null;
+}
+
 /** 「原文件」：给这个标签页的这个地址加一条会话级放行规则，再跳过去，由浏览器自带的查看器打开 */
 async function openOriginalPdf(tabId: number, url: string) {
+  if (url.startsWith('file:')) {
+    await saveLocalPdfState(bypassLocalPdf(await localPdfState(), tabId, url));
+    await browser.tabs.update(tabId, { url });
+    return;
+  }
   const rules = await browser.declarativeNetRequest.getSessionRules();
   const id = Math.max(BYPASS_RULE_BASE, ...rules.map((r) => r.id)) + 1;
   await browser.declarativeNetRequest.updateSessionRules({ addRules: [bypassRule(id, url, tabId) as Browser.declarativeNetRequest.Rule] });

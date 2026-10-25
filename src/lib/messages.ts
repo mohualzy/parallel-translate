@@ -35,7 +35,11 @@ export type BackgroundRequest =
   /** iframe 加载时询问顶层页面是否在翻译 */
   | { type: 'top-frame-state' }
   /** PDF 阅读器「原文件」：本标签页放行这个地址（不再自动转进阅读器），用浏览器自带的查看器打开 */
-  | { type: 'open-original-pdf'; url: string };
+  | { type: 'open-original-pdf'; url: string }
+  /** 本地 PDF 页面加载：后台决定转进阅读器（自己换掉标签页）、让页面接着前进 / 后退，或什么都不做（D67） */
+  | { type: 'local-pdf-loaded'; url: string; traverse: boolean }
+  /** 阅读器显示了一个本地 PDF：记下来，之后从阅读器后退到那个文件时知道方向 */
+  | { type: 'local-pdf-shown'; url: string };
 
 export interface TranslateResult {
   /** 与 segments 等长；null 表示该段失败 */
@@ -55,6 +59,8 @@ export interface BackgroundResponses {
   'broadcast-enabled': null;
   'top-frame-state': TabState | null;
   'open-original-pdf': null;
+  'local-pdf-loaded': 'back' | 'forward' | null;
+  'local-pdf-shown': null;
 }
 
 export type Envelope<T> = { ok: true; data: T } | { ok: false; error: string };

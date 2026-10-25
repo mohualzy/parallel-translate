@@ -314,8 +314,12 @@ function init() {
   }
   // 「原文件」：用浏览器自带的查看器看原 PDF（后台先放行这个地址，免得又被转回阅读器）
   const original = $<HTMLButtonElement>('#original');
-  original.hidden = !/^https?:/.test(file);
+  original.hidden = !/^(https?|file):/.test(file);
   original.addEventListener('click', () => void sendToBackground({ type: 'open-original-pdf', url: file }).catch((err: unknown) => showNotice(String(err))));
+  // 自动打开的本地 PDF：告诉后台这个标签页正在看它，之后从这里后退到那个文件时，后台知道是在后退（D67）
+  if (file.startsWith('file:') && !new URL(location.href).searchParams.has('file')) {
+    window.addEventListener('pageshow', () => void sendToBackground({ type: 'local-pdf-shown', url: file }).catch(() => undefined));
+  }
   progress.textContent = '正在打开…';
   fetchPdf(file)
     .then((data) => load(data, fileNameOf(file), file))
