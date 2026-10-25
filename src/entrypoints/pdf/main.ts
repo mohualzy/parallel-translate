@@ -172,8 +172,11 @@ async function initFonts() {
     renderFontSelect();
     viewer?.setCjkFont(cjkFont);
   });
-  // 读取本机字体要弹授权框，只能由用户点击触发；已授权过就直接读
-  if (await localFontsGranted()) await loadLocalFonts();
+  // 读取本机字体要弹授权框，只能由用户点击触发；已授权过就直接读。
+  // 页面不可见时读不了（报 Page needs to be visible）：在后台打开的阅读器等切到前台再读
+  if (!(await localFontsGranted())) return;
+  if (document.visibilityState === 'visible') await loadLocalFonts();
+  else document.addEventListener('visibilitychange', () => void loadLocalFonts(), { once: true });
 }
 
 async function openFile(file: File) {
