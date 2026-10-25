@@ -872,6 +872,65 @@ test('划词翻译：单词走词典模式并带上段落语境；中文选区�
   await page.close();
 });
 
+test('划词强调：选中文字加高亮 / 下划线（中文、译文也行），部分清除保留两侧；关掉设置后中文选区不出工具条', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/page.html`);
+  await page.waitForTimeout(300);
+  const bar = page.locator('ptx-ui-selection .bar');
+  /** 某种强调当前画着哪些文字（CSS Custom Highlight API 的注册表，页面和内容脚本共用） */
+  const marked = (style: string) => page.evaluate((s) => [...(CSS.highlights.get(`ptx-mark-${s}`) ?? [])].map((r) => (r as Range).toString()), style);
+
+  // 英文选区：「译」和强调按钮都在；点黄色后画上、选区收起、工具条收起
+  await selectText(page, '#p-second', 'quick brown fox');
+  await expect(bar).toBeVisible();
+  await expect(bar.locator('.trigger')).toBeVisible();
+  await expect(bar.locator('.unmark')).toBeHidden();
+  await bar.locator('[data-style="yellow"]').click();
+  await expect(bar).toBeHidden();
+  expect(await marked('yellow')).toEqual(['quick brown fox']);
+  expect(await page.evaluate(() => getSelection()!.isCollapsed)).toBe(true);
+
+  // 选中已强调的一部分：出现「清除」，只清掉选中的词，两侧保留
+  await selectText(page, '#p-second', 'brown');
+  await expect(bar.locator('.unmark')).toBeVisible();
+  await bar.locator('.unmark').click();
+  expect(await marked('yellow')).toEqual(['quick ', ' fox']);
+
+  // 中文选区：没有「译」，强调照常
+  await selectText(page, '#p-zh');
+  await expect(bar).toBeVisible();
+  await expect(bar.locator('.trigger')).toBeHidden();
+  await bar.locator('[data-style="underline"]').click();
+  expect(await marked('underline')).toEqual(['这是一段中文，不应该被翻译。']);
+
+  // 译文里的文字也能强调
+  await toggle(page);
+  await expect(translation(page, '#p-second')).toContainText('【译】');
+  await page.evaluate(() => {
+    const t = document.querySelector('#p-second > ptx-t ptx-i')!.firstChild!;
+    const range = document.createRange();
+    range.setStart(t, 0);
+    range.setEnd(t, 3);
+    getSelection()!.removeAllRanges();
+    getSelection()!.addRange(range);
+    document.querySelector('#p-second')!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+  await expect(bar).toBeVisible();
+  await bar.locator('[data-style="blue"]').click();
+  expect(await marked('blue')).toEqual(['【译】']);
+
+  // 关掉「显示强调按钮」：中文选区不再出工具条
+  await setSettings({ pageMarks: false });
+  try {
+    await selectText(page, '#p-zh');
+    await page.waitForTimeout(300);
+    await expect(bar).toBeHidden();
+  } finally {
+    await setSettings({ pageMarks: true });
+  }
+  await page.close();
+});
+
 /** 模拟 Alt+I：后台把命令发给标签页的所有 frame（与 background.ts 一致） */
 async function translateInput(page: Page) {
   await sw.evaluate(async (target) => {

@@ -101,6 +101,28 @@ ptx-t.ptx-error {
   cursor: pointer;
 }
 
+/* ---------- 划词强调（一次性，CSS Custom Highlight API，见 content/marks.ts） ---------- */
+
+::highlight(ptx-mark-yellow) {
+  background-color: rgba(255, 214, 51, 0.55);
+}
+
+::highlight(ptx-mark-green) {
+  background-color: rgba(110, 214, 110, 0.5);
+}
+
+::highlight(ptx-mark-blue) {
+  background-color: rgba(100, 170, 255, 0.45);
+}
+
+::highlight(ptx-mark-pink) {
+  background-color: rgba(255, 120, 170, 0.45);
+}
+
+::highlight(ptx-mark-underline) {
+  text-decoration: underline 2px #e5484d;
+}
+
 /* ---------- 解除截断：译文所在容器有省略号 / 行数限制 / 固定高度时 ---------- */
 
 [data-ptx-unclamp] {

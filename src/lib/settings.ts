@@ -15,6 +15,8 @@ export interface Settings {
   translationStyle: TranslationStyle;
   hoverKey: HoverKey;
   selectionMode: SelectionMode;
+  /** 选中文字时在工具条里显示强调按钮（高亮、下划线；只在当前页面有效） */
+  pageMarks: boolean;
   /** 页面右侧的悬浮球 */
   floatBall: boolean;
   /** 悬浮球纵向位置（占视口高度的比例 0~1），所有网站共用 */
@@ -81,6 +83,7 @@ export const DEFAULT_SETTINGS: Settings = {
   translationStyle: 'none',
   hoverKey: 'Control',
   selectionMode: 'icon',
+  pageMarks: true,
   floatBall: true,
   floatBallTop: 0.6,
   floatBallHiddenSites: [],

@@ -2,9 +2,86 @@
   display: none !important;
 }
 
-.trigger {
+/* 选区旁的工具条：「译」+ 强调按钮（高亮、下划线、清除） */
+.bar {
   position: fixed;
   z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 16px;
+  background: var(--ptx-bg);
+  box-shadow: var(--ptx-shadow);
+}
+
+.marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mark,
+.unmark {
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ptx-text);
+  cursor: pointer;
+}
+
+.mark {
+  width: 24px;
+  padding: 0;
+}
+
+.mark:hover,
+.unmark:hover {
+  border-color: var(--ptx-border);
+}
+
+.mark::before {
+  content: '';
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: auto;
+  border-radius: 50%;
+}
+
+.mark-yellow::before {
+  background: rgb(255, 214, 51);
+}
+
+.mark-green::before {
+  background: rgb(110, 214, 110);
+}
+
+.mark-blue::before {
+  background: rgb(100, 170, 255);
+}
+
+.mark-pink::before {
+  background: rgb(255, 120, 170);
+}
+
+.mark-underline {
+  font: 600 13px/22px var(--ptx-font);
+  text-decoration: underline 2px #e5484d;
+  text-underline-offset: 3px;
+}
+
+.mark-underline::before {
+  content: none;
+}
+
+.unmark {
+  padding: 0 8px;
+  font: 12px/22px var(--ptx-font);
+}
+
+.trigger {
   width: 26px;
   height: 26px;
   padding: 0;
