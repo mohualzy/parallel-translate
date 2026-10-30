@@ -8,10 +8,12 @@ export const SITES: [name: string, url: string][] = [
   ['mdn', 'https://developer.mozilla.org/en-US/docs/Web/CSS/display'],
   ['hn', 'https://news.ycombinator.com/'],
   ['bbc', 'https://www.bbc.com/news'],
-  ['stackoverflow', 'https://stackoverflow.com/questions/11227809/why-is-processing-a-sorted-array-faster-than-processing-an-unsorted-array'],
+  // 论坛（Discourse 单页应用）；Stack Overflow 在自动化浏览器里多半停在 Cloudflare 人机验证页，测不到内容
+  ['discourse', 'https://discuss.python.org/latest'],
   ['python-docs', 'https://docs.python.org/3/tutorial/classes.html'],
   ['react', 'https://react.dev/learn'],
-  ['cloudflare-blog', 'https://blog.cloudflare.com/'],
+  // 博客列表；blog.cloudflare.com 在自动化浏览器里加载超过 30 秒，测不到
+  ['rust-blog', 'https://blog.rust-lang.org/'],
   ['reddit', 'https://www.reddit.com/r/programming/'],
   ['theverge', 'https://www.theverge.com/'],
   ['arxiv-abs', 'https://arxiv.org/abs/1706.03762'],
