@@ -95,6 +95,9 @@
 - 已确认的真实页面结构：`#movie_player`（`.html5-video-player`）、其中的 `<video>`、带 `aria-pressed` 的 `.ytp-subtitles-button`、`.ytp-caption-window-container`；控制栏隐藏时播放器带 `ytp-autohide` 类。播放器请求字幕的格式按 json3（`fmt=json3`）处理，尚未在真实页面上抓包确认。
 - 多个内容脚本共用同一个 `YOUTUBE_MATCHES` 数组对象，在 `build:manifestGenerated` 钩子里不能直接 `push`（会被追加多次），要赋新数组。
 - 测试页里，页面脚本给 `<video>` 定义的属性在隔离世界看不到，所以时间源用 `canvas.captureStream()` 的真实视频流。
+- 双语字幕层显示期间原生字幕设为不可见，所以字幕层空着就是用户眼里的「字幕消失」：
+  - 人工字幕的条目可能时间重叠（多人同时说话、画面文字注释），找当前条目不能只看最近开始的那条；
+  - 字幕层没挂上时（首次挂载、被移除后重挂）要撤掉隐藏标记，重挂后要强制重新渲染当前条目。
 - 字幕轨列表与切换：页面世界的 `#movie_player` 元素上有非公开接口 `getOption('captions', 'tracklist')`（每条带 `languageCode`、`kind`（自动字幕为 `asr`）、`vss_id`（人工 `.en`、自动 `a.en`））和 `setOption('captions', 'track', track)`。只能在 MAIN world 调用，隔离世界拿不到这些方法。切换后播放器会重新请求一次 timedtext（不带 `kind=asr`）。
 - 自动字幕的分词：英文每个词自带前导空格（`" guys"`），日文、中文没有空格，合句时要保留原始分隔。
 - 真实 YouTube 实测（2026-10-22，通过 web-access 的 CDP 连到日常 Chrome，不会被机器人检测拦截）：
