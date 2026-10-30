@@ -216,6 +216,15 @@ describe('richtext', () => {
     );
   });
 
+  it('表单控件在译文里不留文字（下拉框的文字是全部选项），按钮保留文字', () => {
+    setup('<p>Theme <select><option>Auto</option><option>Dark</option></select> or <button>Reset</button></p>');
+    const [run] = collectRuns(document.body, classifier);
+    const ser = serialize(run!.nodes, true, classifier);
+    const div = document.createElement('div');
+    div.append(deserialize('主题 <x0/> 或 <x1/>', ser.refs, document));
+    expect(div.textContent).toBe('主题  或 Reset');
+  });
+
   it('标签过多时降级为纯文本', () => {
     const links = Array.from({ length: 30 }, (_, i) => `<a href="#${i}">w${i}</a>`).join(' ');
     setup(`<p>${links}</p>`);

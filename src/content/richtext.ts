@@ -11,6 +11,8 @@ import type { DomClassifier } from './dom';
 const WRAP_TAGS = new Set(['a', 'b', 'strong', 'em', 'i', 'u', 's', 'del', 'ins', 'mark', 'q', 'cite', 'abbr', 'dfn']);
 /** 克隆会产生副作用的原子元素（重复加载媒体、重复表单控件），译文中只保留其文字；其余原子元素整体克隆 */
 const UNCLONABLE_OPAQUE = new Set(['iframe', 'video', 'audio', 'object', 'embed', 'canvas', 'input', 'select', 'textarea', 'button', 'option']);
+/** 表单控件的文字不是给人读的（下拉框的文字是全部选项、文本框是用户输入），译文里什么都不留 */
+const FORM_CONTROLS = new Set(['input', 'select', 'textarea', 'option']);
 /** 标签过多时弱模型容易出错，降级为纯文本 */
 export const MAX_TAGS = 24;
 
@@ -85,6 +87,7 @@ function cloneShallow(ref: Element): Element {
 }
 
 function renderOpaque(ref: Element, doc: Document): Node {
+  if (FORM_CONTROLS.has(ref.localName)) return doc.createTextNode('');
   if (UNCLONABLE_OPAQUE.has(ref.localName)) return doc.createTextNode(ref.textContent ?? '');
   const clone = ref.cloneNode(true) as Element;
   stripIds(clone);
