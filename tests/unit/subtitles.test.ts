@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   activeCueIndex,
   batchContext,
+  dropMisheardCues,
   cleanCueText,
   nextBatch,
   parseJson3,
@@ -155,6 +156,20 @@ describe('activeCueIndex', () => {
     expect(activeCueIndex(overlap, 1500)).toBe(1);
     expect(activeCueIndex(overlap, 3000)).toBe(0);
     expect(activeCueIndex(overlap, 5000)).toBe(-1);
+  });
+});
+
+describe('dropMisheardCues', () => {
+  const cue = (text: string): Cue => ({ start: 0, end: 1, text });
+
+  it('去掉没有字幕语言文字的条目，夹着外文的句子保留', () => {
+    const cues = [cue('ni'), cue('bengali'), cue('渋谷の街'), cue('tantan あ'), cue('YouTubeを見る')];
+    expect(dropMisheardCues(cues, 'ja').map((c) => c.text)).toEqual(['渋谷の街', 'tantan あ', 'YouTubeを見る']);
+    expect(dropMisheardCues([cue('hello'), cue('안녕')], 'ko').map((c) => c.text)).toEqual(['안녕']);
+  });
+
+  it('拉丁字母语言无法判断，全部保留', () => {
+    expect(dropMisheardCues([cue('ni'), cue('hello')], 'en')).toHaveLength(2);
   });
 });
 

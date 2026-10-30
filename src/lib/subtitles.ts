@@ -126,6 +126,24 @@ function mergeAsrWords(events: Json3Event[]): Cue[] {
   });
 }
 
+/** 能靠文字系统判断的语言：字幕里至少要有这种文字 */
+const SCRIPT_OF_LANG: Record<string, RegExp> = {
+  ja: /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u,
+  zh: /\p{Script=Han}/u,
+  ko: /\p{Script=Hangul}/u,
+  ru: /\p{Script=Cyrillic}/u,
+};
+
+/**
+ * 去掉自动字幕里听错的条目：语音识别碰到演唱和伴奏时会输出别的语言的碎片，
+ * 比如日语歌里的「ni」「car」「bengali」，翻译只会如实转述，既没意义又费钱。
+ * 按字幕语言的文字系统判断；拉丁字母语言之间分不清，全部保留。
+ */
+export function dropMisheardCues(cues: Cue[], lang: string): Cue[] {
+  const script = SCRIPT_OF_LANG[baseLang(lang)];
+  return script ? cues.filter((c) => script.test(c.text)) : cues;
+}
+
 /**
  * 当前时间点正在显示的条目下标；没有则 -1（条目按开始时间有序）。
  * 人工字幕的条目可能时间重叠（多人同时说话、画面文字注释）：最近开始的那条已经结束时，

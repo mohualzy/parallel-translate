@@ -6,6 +6,7 @@ import { getSettings, onSettingsChanged, type Settings } from '@/lib/settings';
 import {
   activeCueIndex,
   batchContext,
+  dropMisheardCues,
   nextBatch,
   parseJson3,
   parseTimedtextUrl,
@@ -119,7 +120,8 @@ export class YouTubeSubtitles {
     const info = parseTimedtextUrl(url);
     const key = trackKey(info.lang, info.asr, info.translatedTo);
     if (this.track?.videoId === info.videoId && this.track.key === key) return true;
-    const cues = parseJson3(body, info.asr);
+    const parsed = parseJson3(body, info.asr);
+    const cues = info.asr ? dropMisheardCues(parsed, info.translatedTo || info.lang) : parsed;
     if (cues.length === 0) return false;
     // 字幕本身就是目标语言（视频语音就是目标语言，或只能用 YouTube 自动翻译成目标语言的那条），交给原生字幕
     const sample = cues.slice(0, 30).map((c) => c.text).join(' ');
