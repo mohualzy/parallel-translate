@@ -122,6 +122,16 @@ describe('activeCueIndex', () => {
     expect(activeCueIndex(cues, 7999)).toBe(2);
     expect(activeCueIndex(cues, 9000)).toBe(-1);
   });
+
+  it('时间重叠：最近开始的条目已结束、更早的长条目还在显示时返回长条目', () => {
+    const overlap: Cue[] = [
+      { start: 0, end: 5000, text: 'long' },
+      { start: 1000, end: 2000, text: 'short' },
+    ];
+    expect(activeCueIndex(overlap, 1500)).toBe(1);
+    expect(activeCueIndex(overlap, 3000)).toBe(0);
+    expect(activeCueIndex(overlap, 5000)).toBe(-1);
+  });
 });
 
 describe('nextBatch', () => {

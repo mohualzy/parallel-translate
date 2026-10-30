@@ -126,7 +126,11 @@ function mergeAsrWords(events: Json3Event[]): Cue[] {
   });
 }
 
-/** 当前时间点正在显示的条目下标；没有则 -1（条目按开始时间有序） */
+/**
+ * 当前时间点正在显示的条目下标；没有则 -1（条目按开始时间有序）。
+ * 人工字幕的条目可能时间重叠（多人同时说话、画面文字注释）：最近开始的那条已经结束时，
+ * 更早开始的长条目可能还在显示，要往前找，否则原生字幕还有字、我们的字幕层却是空的。
+ */
 export function activeCueIndex(cues: Cue[], ms: number): number {
   let lo = 0;
   let hi = cues.length - 1;
@@ -140,7 +144,8 @@ export function activeCueIndex(cues: Cue[], ms: number): number {
       hi = mid - 1;
     }
   }
-  return found !== -1 && cues[found]!.end > ms ? found : -1;
+  for (let i = found; i >= 0; i--) if (cues[i]!.end > ms) return i;
+  return -1;
 }
 
 export interface WindowOptions {
