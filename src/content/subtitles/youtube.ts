@@ -7,11 +7,12 @@ import {
   nextBatch,
   parseJson3,
   parseTimedtextUrl,
-  pickManualTrack,
-  type CaptionTrackInfo,
+  isAutoTrack,
+  pickSourceTrack,
+  sourceTrackUrl,
   type Cue,
 } from '@/lib/subtitles';
-import { CONTENT_SOURCE, HOOK_SOURCE, type ReadyMessage, type SelectTrackMessage, type TimedtextMessage } from '@/lib/youtube';
+import { CONTENT_SOURCE, HOOK_SOURCE, type FetchTrackMessage, type ReadyMessage, type TimedtextMessage } from '@/lib/youtube';
 import { escapeText, unescapeText } from '../richtext';
 import { SubtitleOverlay } from './overlay';
 
@@ -19,7 +20,7 @@ type CueState = 'idle' | 'pending' | 'done' | 'error';
 
 interface Track {
   videoId: string;
-  /** 语言 + 是否自动字幕：同一视频重复请求同一轨时复用已有译文 */
+  /** 语言 + 是否自动字幕 + 自动翻译语言：同一视频重复请求同一轨时复用已有译文 */
   key: string;
   cues: Cue[];
   /** 自动生成（语音识别）字幕：字幕层显示「自动字幕」标记 */
@@ -46,8 +47,12 @@ export class YouTubeSubtitles {
   private overlay: SubtitleOverlay;
   private inflight = 0;
   private rendered = '';
-  /** 已经替用户切换过人工字幕的视频：每个视频只切一次，之后用户手动切回自动字幕不再干预 */
-  private switched = new Set<string>();
+  /** 正在请钩子拉取的原文轨；拉取失败时退回播放器加载的那条 */
+  private fetching?: { url: string; fallback: TimedtextMessage };
+  /** 每个视频播放器上一次加载的字幕轨：之后加载的轨不一样，就是用户在字幕菜单里换了轨 */
+  private lastPlayed = new Map<string, string>();
+  /** 用户在字幕菜单里换过轨的视频：跟随用户选的轨 */
+  private userPicked = new Set<string>();
 
   constructor(private readonly ctx: ContentScriptContext) {
     this.overlay = new SubtitleOverlay(ctx);
@@ -56,7 +61,7 @@ export class YouTubeSubtitles {
   async start() {
     window.addEventListener('message', (e: MessageEvent<TimedtextMessage>) => {
       if (e.source !== window || e.data?.source !== HOOK_SOURCE || e.data.type !== 'timedtext') return;
-      this.load(e.data.url, e.data.body, e.data.tracks);
+      this.load(e.data);
     });
     this.settings = await getSettings();
     onSettingsChanged((next) => (this.settings = next));
@@ -65,34 +70,50 @@ export class YouTubeSubtitles {
     this.ctx.setInterval(() => this.tick(), TICK_MS);
   }
 
-  private load(url: string, body: string, tracks?: CaptionTrackInfo[]) {
+  private load(message: TimedtextMessage) {
     if (!this.settings?.youtubeSubtitles) return;
-    const info = parseTimedtextUrl(url);
-    // 自动字幕常常不可靠（音乐视频尤其明显）：视频另有人工字幕就切过去，新字幕到来后会替换当前这一轨
-    if (info.asr && tracks?.length && !this.switched.has(info.videoId)) {
-      const manual = pickManualTrack(tracks, info.lang, this.settings.targetLang);
-      if (manual) {
-        this.switched.add(info.videoId);
-        const message: SelectTrackMessage = {
-          source: CONTENT_SOURCE,
-          type: 'select-track',
-          vssId: manual.vssId,
-          languageCode: manual.languageCode,
-        };
-        window.postMessage(message, location.origin);
-      }
+    if (message.fetched) {
+      const pending = this.fetching;
+      if (pending?.url !== message.url) return;
+      this.fetching = undefined;
+      if (!this.apply(message.url, message.body)) this.apply(pending.fallback.url, pending.fallback.body);
+      return;
     }
-    // YouTube「自动翻译」成目标语言时，下面的「已是目标语言」检测会让位给原生字幕；
-    // 翻成其他语言（如英文）时，把这一轨当原文再翻译。切换自动翻译语言视为换了一轨
-    const key = `${info.lang}:${info.asr}:${info.translatedTo}`;
-    if (this.track?.videoId === info.videoId && this.track.key === key) return;
+    // 播放器加载哪条取决于用户的全局字幕语言偏好，可能还经过 YouTube 自动翻译：原文轨由我们挑，
+    // 和播放器加载的不是同一条时，请钩子用播放器的令牌参数去拉（设计文档第 6 点）
+    const info = parseTimedtextUrl(message.url);
+    const tracks = message.tracks ?? [];
+    const played = trackKey(info.lang, info.asr, info.translatedTo);
+    const last = this.lastPlayed.get(info.videoId);
+    this.lastPlayed.set(info.videoId, played);
+    if (last !== undefined && last !== played) this.userPicked.add(info.videoId);
+    const source = this.userPicked.has(info.videoId)
+      ? // 用户自己在字幕菜单里换了轨：用这一轨（去掉自动翻译）
+        tracks.find((t) => t.languageCode === info.lang && isAutoTrack(t) === info.asr)
+      : pickSourceTrack(tracks, info, this.settings.targetLang, message.videoText ?? '');
+    if (source && (source.languageCode !== info.lang || isAutoTrack(source) !== info.asr || info.translatedTo)) {
+      if (this.track?.videoId === info.videoId && this.track.key === trackKey(source.languageCode, isAutoTrack(source), '')) return;
+      const url = sourceTrackUrl(source, message.url);
+      if (this.fetching?.url === url) return;
+      this.fetching = { url, fallback: message };
+      window.postMessage({ source: CONTENT_SOURCE, type: 'fetch-track', url } satisfies FetchTrackMessage, location.origin);
+      return;
+    }
+    this.apply(message.url, message.body);
+  }
+
+  /** 用这条字幕作为原文；解析不出字幕条目时返回 false */
+  private apply(url: string, body: string): boolean {
+    const info = parseTimedtextUrl(url);
+    const key = trackKey(info.lang, info.asr, info.translatedTo);
+    if (this.track?.videoId === info.videoId && this.track.key === key) return true;
     const cues = parseJson3(body, info.asr);
-    if (cues.length === 0) return;
-    // 字幕本身就是目标语言，不需要翻译
+    if (cues.length === 0) return false;
+    // 字幕本身就是目标语言（视频语音就是目标语言，或只能用 YouTube 自动翻译成目标语言的那条），交给原生字幕
     const sample = cues.slice(0, 30).map((c) => c.text).join(' ');
     if (isProbablyInLanguage(sample, this.settings.targetLang)) {
       this.track = undefined;
-      return;
+      return true;
     }
     this.track = {
       videoId: info.videoId,
@@ -103,6 +124,7 @@ export class YouTubeSubtitles {
       translations: [],
     };
     this.rendered = '';
+    return true;
   }
 
   private player(): HTMLElement | null {
@@ -200,6 +222,8 @@ export class YouTubeSubtitles {
     }, RETRY_MS);
   }
 }
+
+const trackKey = (lang: string, asr: boolean, translatedTo: string) => `${lang}:${asr}:${translatedTo}`;
 
 /** 视频标题作为翻译上下文（页面标题可能已被整页翻译替换，优先取页面上的标题元素） */
 function videoTitle(): string {

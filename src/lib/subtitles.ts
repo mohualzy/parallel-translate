@@ -1,4 +1,4 @@
-import { baseLang } from './languages';
+import { baseLang, isProbablyInLanguage } from './languages';
 
 /**
  * YouTube 字幕数据（/api/timedtext，fmt=json3）的解析与调度逻辑。纯函数，便于单测。
@@ -174,13 +174,15 @@ export function nextBatch(
   return batch;
 }
 
-/** 播放器字幕轨列表里的一条（来自页面世界的 getOption('captions', 'tracklist')） */
+/** 视频的一条字幕轨（来自页面世界的 getPlayerResponse().captions…captionTracks） */
 export interface CaptionTrackInfo {
   languageCode: string;
   /** 例如 ".en"（人工）、"a.en"（自动生成） */
   vssId: string;
   kind: string;
   name: string;
+  /** 不带令牌的字幕地址，拉取时要补上播放器请求里的令牌参数（见 sourceTrackUrl） */
+  baseUrl: string;
 }
 
 export function isAutoTrack(track: CaptionTrackInfo): boolean {
@@ -188,18 +190,46 @@ export function isAutoTrack(track: CaptionTrackInfo): boolean {
 }
 
 /**
- * 当前加载的是自动字幕时，挑一条人工字幕替换：与自动字幕同语言的优先，其次英文，再次任意一条。
- * 目标语言的人工字幕不选：那条原生字幕本身就能直接看，不需要双语。
+ * 挑双语字幕的原文轨（设计文档第 6 点）。播放器选哪条取决于用户的全局字幕语言偏好，可能是自动翻译过的，
+ * 所以由我们按视频本身挑：语音同语言的人工字幕 → 播放器加载的那条人工字幕 → 英文人工字幕 → 任意人工字幕 → 语音同语言的自动字幕。
+ * 目标语言的轨不选（原生字幕就能直接看）；视频语音就是目标语言时返回 undefined。
+ * 语音语言：有自动字幕时取它的语言；没有时看标题和简介像哪条人工字幕的语言。
  */
-export function pickManualTrack(
+export function pickSourceTrack(
   tracks: CaptionTrackInfo[],
-  autoLang: string,
+  playing: { lang: string; asr: boolean },
   targetLang: string,
+  videoText: string,
 ): CaptionTrackInfo | undefined {
-  const manual = tracks.filter((t) => !isAutoTrack(t) && baseLang(t.languageCode) !== baseLang(targetLang));
-  return (
-    manual.find((t) => baseLang(t.languageCode) === baseLang(autoLang)) ??
-    manual.find((t) => baseLang(t.languageCode) === 'en') ??
-    manual[0]
+  const target = baseLang(targetLang);
+  const auto = tracks.find(isAutoTrack);
+  const manual = tracks.filter((t) => !isAutoTrack(t));
+  const spoken = baseLang(
+    auto?.languageCode ?? manual.find((t) => isProbablyInLanguage(videoText, t.languageCode))?.languageCode ?? '',
   );
+  if (spoken === target) return undefined;
+  const candidates = manual.filter((t) => baseLang(t.languageCode) !== target);
+  const same = (t: CaptionTrackInfo, lang: string) => baseLang(t.languageCode) === baseLang(lang);
+  return (
+    (spoken ? candidates.find((t) => same(t, spoken)) : undefined) ??
+    (playing.asr ? undefined : candidates.find((t) => t.languageCode === playing.lang)) ??
+    candidates.find((t) => same(t, 'en')) ??
+    candidates[0] ??
+    (auto && spoken ? auto : undefined)
+  );
+}
+
+/** 标识字幕轨本身的参数：拉另一条轨时以它的 baseUrl 为准，不从播放器的请求里继承 */
+const TRACK_PARAMS = new Set(['lang', 'kind', 'name', 'tlang']);
+
+/**
+ * 另一条字幕轨的请求地址：它的 baseUrl + 播放器这次请求里多出来的参数（pot 令牌、fmt、客户端信息）。
+ * 不继承 tlang，拿到的就是没有经过 YouTube 自动翻译的原文。
+ */
+export function sourceTrackUrl(track: CaptionTrackInfo, playedUrl: string): string {
+  const url = new URL(track.baseUrl, playedUrl);
+  for (const [key, value] of new URL(playedUrl).searchParams) {
+    if (!TRACK_PARAMS.has(key) && !url.searchParams.has(key)) url.searchParams.set(key, value);
+  }
+  return url.href;
 }

@@ -34,40 +34,46 @@
       video.srcObject = canvas.captureStream(10);
       video.play();
 
-      // 像真实播放器一样：字幕轨列表 + 切换接口（getOption / setOption），打开 CC 时用 XHR 请求当前字幕轨
+      // 像真实播放器一样：getPlayerResponse() 里有字幕轨列表（带 baseUrl）和视频信息；打开 CC 时用 XHR 请求当前字幕轨，
+      // 地址 = baseUrl + fmt + pot 令牌（+ 自动翻译的 tlang）；setOption 模拟用户在字幕菜单里换轨
       const player = document.getElementById('movie_player');
-      const AUTO = { languageCode: 'en', languageName: 'English (auto-generated)', kind: 'asr', vss_id: 'a.en' };
-      const MANUAL = { languageCode: 'en', languageName: 'English', kind: '', vss_id: '.en' };
-      // mixed：默认选中自动字幕，但另有人工字幕；asronly：只有自动字幕；其他视频：人工字幕
-      const TRACKS = { mixed: [AUTO, MANUAL], asronly: [AUTO] };
       const videoId = () => new URLSearchParams(location.search).get('v') || 'test123';
-      const tracks = () => TRACKS[videoId()] ?? [MANUAL];
-      const request = (track) => {
+      const track = (languageCode, kind = '') => ({
+        languageCode,
+        kind,
+        vss_id: `${kind === 'asr' ? 'a' : ''}.${languageCode}`,
+        baseUrl: `/api/timedtext?v=${videoId()}&lang=${languageCode}${kind === 'asr' ? '&kind=asr' : ''}`,
+      });
+      // mixed：默认加载自动字幕，但另有人工字幕；asronly：只有自动字幕；
+      // ja-song：日语歌，只有英语、日语人工字幕，用户的字幕语言偏好是韩语，播放器加载英语轨并自动翻译成韩语；其他视频：英语人工字幕
+      const TRACKS = {
+        mixed: () => [track('en', 'asr'), track('en')],
+        asronly: () => [track('en', 'asr')],
+        'ja-song': () => [track('en'), track('ja')],
+      };
+      const tracks = () => (TRACKS[videoId()] ?? (() => [track('en')]))();
+      const DETAILS = { 'ja-song': { title: 'YOASOBI - 群青 / THE FIRST TAKE', shortDescription: '今日は一発撮りでお届けします。' } };
+      // 模拟 YouTube「自动翻译」（打开 CC 时按偏好自动选的）：tlang-en 翻成英文，tlang-zh 翻成简体中文，ja-song 翻成韩语
+      const AUTO_TLANG = { 'tlang-en': '&tlang=en', 'tlang-zh': '&tlang=zh-Hans', 'ja-song': '&tlang=ko' };
+      const request = (t, tlang = '') => {
         const xhr = new XMLHttpRequest();
-        const kind = track.kind === 'asr' ? '&kind=asr' : '';
-        // 模拟 YouTube「自动翻译」：tlang-en 翻成英文，tlang-zh 翻成简体中文
-        const tlang = { 'tlang-en': '&tlang=en', 'tlang-zh': '&tlang=zh-Hans' }[videoId()] ?? '';
-        xhr.open('GET', `/api/timedtext?v=${videoId()}&lang=${track.languageCode}&fmt=json3${kind}${tlang}&pot=mock-token`);
+        xhr.open('GET', `${t.baseUrl}&fmt=json3&pot=mock-token${tlang}`);
         xhr.send();
       };
-      // 与真实播放器一致的怪癖（2026-10-22 实测）：有时 tracklist 返回空数组，但 getPlayerResponse() 里有完整的 captionTracks
-      player.getOption = (module, option) =>
-        module === 'captions' && option === 'tracklist' ? (videoId() === 'mixed' ? [] : tracks()) : undefined;
       player.getPlayerResponse = () => ({
         captions: {
           playerCaptionsTracklistRenderer: {
-            captionTracks: tracks().map((t) => ({ languageCode: t.languageCode, kind: t.kind || undefined, vssId: t.vss_id })),
+            captionTracks: tracks().map((t) => ({ languageCode: t.languageCode, kind: t.kind || undefined, vssId: t.vss_id, baseUrl: t.baseUrl })),
           },
         },
+        videoDetails: DETAILS[videoId()] ?? { title: 'Mock Video', shortDescription: 'A video about translation.' },
       });
-      // 与真实播放器一致：只传 languageCode 时优先选中该语言的人工字幕
       player.setOption = (module, option, wanted) => {
         if (module !== 'captions' || option !== 'track') return;
-        const same = tracks().filter((t) => t.languageCode === wanted.languageCode);
-        const track = same.find((t) => t.vss_id === wanted.vss_id) ?? same.find((t) => t.kind !== 'asr') ?? same[0];
-        if (!track) return;
-        window.__selectedTrack = track.vss_id;
-        request(track);
+        const t = tracks().find((t) => t.vss_id === wanted.vss_id);
+        if (!t) return;
+        window.__selectedTrack = t.vss_id;
+        request(t);
       };
 
       const button = document.querySelector('.ytp-subtitles-button');
@@ -75,7 +81,7 @@
         const on = button.getAttribute('aria-pressed') !== 'true';
         button.setAttribute('aria-pressed', String(on));
         document.querySelector('#native-caption').textContent = on ? 'native caption' : '';
-        if (on) request(tracks()[0]);
+        if (on) request(tracks()[0], AUTO_TLANG[videoId()]);
       });
     </script>
   </body>

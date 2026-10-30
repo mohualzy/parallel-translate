@@ -471,7 +471,7 @@ test('YouTube 字幕：单页应用切换视频后换成新视频的字幕；关
   await page.close();
 });
 
-test('YouTube 字幕：默认是自动字幕但另有人工字幕时切到人工字幕，每个视频只切一次', async () => {
+test('YouTube 字幕：默认是自动字幕但另有人工字幕时用人工字幕当原文，不改动播放器', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/watch?v=mixed`);
   await page.waitForTimeout(500);
@@ -482,19 +482,8 @@ test('YouTube 字幕：默认是自动字幕但另有人工字幕时切到人工
   await expect(original).toHaveText('Manual caption line for the mixed video.');
   await expect(page.locator('ptx-ui-subtitles .translated')).toHaveText('【译】Manual caption line for the mixed video.');
   await expect(badge).toBeHidden();
-  expect(await page.evaluate(() => (window as unknown as { __selectedTrack?: string }).__selectedTrack)).toBe('.en');
-
-  // 用户手动切回自动字幕：不再干预
-  await page.evaluate(() => {
-    const player = document.getElementById('movie_player') as unknown as {
-      setOption(m: string, o: string, t: object): void;
-    };
-    player.setOption('captions', 'track', { languageCode: 'en', kind: 'asr', vss_id: 'a.en' });
-  });
-  await expect(original).toHaveText('auto generated words here.');
-  await expect(badge).toBeVisible();
-  await page.waitForTimeout(500);
-  await expect(original).toHaveText('auto generated words here.');
+  // 人工字幕由扩展自己拉取，播放器的字幕轨（以及用户的全局字幕语言偏好）不变
+  expect(await page.evaluate(() => (window as unknown as { __selectedTrack?: string }).__selectedTrack)).toBeUndefined();
   await page.close();
 });
 
@@ -511,21 +500,33 @@ test('YouTube 字幕：只有自动字幕时保留它，并在字幕层标注「
   await page.close();
 });
 
-test('YouTube 字幕：YouTube 自动翻译成英文时当原文再翻；自动翻译成中文时交给原生字幕', async () => {
-  const page = await context.newPage();
-  await page.goto(`${server.url}/watch?v=tlang-en`);
-  await page.waitForTimeout(500);
-  await page.locator('.ytp-subtitles-button').click();
-  await expect(page.locator('ptx-ui-subtitles .original')).toHaveText('Hello and welcome to the channel.');
-  await expect(page.locator('ptx-ui-subtitles .translated')).toHaveText('【译】Hello and welcome to the channel.');
+test('YouTube 字幕：播放器加载的是 YouTube 自动翻译的字幕时，用未翻译的原文轨', async () => {
+  for (const id of ['tlang-en', 'tlang-zh']) {
+    const page = await context.newPage();
+    await page.goto(`${server.url}/watch?v=${id}`);
+    await page.waitForTimeout(500);
+    await page.locator('.ytp-subtitles-button').click();
+    await expect(page.locator('ptx-ui-subtitles .original')).toHaveText('Hello and welcome to the channel.');
+    await expect(page.locator('ptx-ui-subtitles .translated')).toHaveText('【译】Hello and welcome to the channel.');
+    await page.close();
+  }
+});
 
-  await page.goto(`${server.url}/watch?v=tlang-zh`);
+test('YouTube 字幕：日语歌在韩语字幕偏好下（播放器显示英语 >> 韩语），按标题和简介挑日语字幕当原文', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/watch?v=ja-song`);
   await page.waitForTimeout(500);
   await page.locator('.ytp-subtitles-button').click();
-  await page.waitForTimeout(1000);
-  await expect(page.locator('ptx-ui-subtitles .layer')).toBeHidden();
-  await expect(page.locator('html')).not.toHaveAttribute('data-ptx-subtitles', '');
-  await expect(page.locator('#ytp-caption-window-container')).toBeVisible();
+  await expect(page.locator('ptx-ui-subtitles .original')).toHaveText('朝が来て渋谷の街に。');
+  await expect(page.locator('ptx-ui-subtitles .translated')).toHaveText('【译】朝が来て渋谷の街に。');
+  expect(server.batches.flat().some((s) => s.includes('한국어'))).toBe(false);
+
+  // 用户在字幕菜单里选了英语：跟随用户的选择
+  await page.evaluate(() => {
+    const player = document.getElementById('movie_player') as unknown as { setOption(m: string, o: string, t: object): void };
+    player.setOption('captions', 'track', { vss_id: '.en' });
+  });
+  await expect(page.locator('ptx-ui-subtitles .original')).toHaveText('Hello and welcome to the channel.');
   await page.close();
 });
 

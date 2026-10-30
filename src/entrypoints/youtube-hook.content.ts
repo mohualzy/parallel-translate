@@ -5,57 +5,51 @@ import {
   HOOK_SOURCE,
   isTimedtextUrl,
   YOUTUBE_MATCHES,
+  type FetchTrackMessage,
   type ReadyMessage,
-  type SelectTrackMessage,
   type TimedtextMessage,
 } from '@/lib/youtube';
 
-/** YouTube 播放器元素上的（非公开）接口，只用到字幕相关的几个方法 */
+/** YouTube 播放器元素上的（非公开）接口，只读取播放器数据 */
 interface YouTubePlayer extends HTMLElement {
-  getOption?(module: 'captions', option: 'tracklist'): Record<string, unknown>[] | undefined;
-  setOption?(module: 'captions', option: 'track', value: Record<string, unknown>): void;
   getPlayerResponse?(): {
     captions?: { playerCaptionsTracklistRenderer?: { captionTracks?: Record<string, unknown>[] } };
+    videoDetails?: { title?: string; shortDescription?: string };
   };
 }
 
-const player = () => document.getElementById('movie_player') as YouTubePlayer | null;
+const playerResponse = () => {
+  try {
+    return (document.getElementById('movie_player') as YouTubePlayer | null)?.getPlayerResponse?.();
+  } catch {
+    return undefined;
+  }
+};
 
 /**
- * 字幕轨列表。实测（2026-10-22）getOption('captions', 'tracklist') 在只有自动字幕的视频上返回空数组，
- * 所以为空时退回播放器数据里的 captionTracks（字段名是 vssId 而不是 vss_id）。
+ * 字幕轨列表，取播放器数据里的 captionTracks：它带 baseUrl，且包含自动字幕
+ * （实测 getOption('captions', 'tracklist') 在只有自动字幕的视频上返回空数组）。
  */
-function rawTracks(): Record<string, unknown>[] {
-  try {
-    const list = player()?.getOption?.('captions', 'tracklist');
-    if (Array.isArray(list) && list.length > 0) return list;
-  } catch {
-    // 退回下面的 captionTracks
-  }
-  try {
-    const tracks = player()?.getPlayerResponse?.()?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    return Array.isArray(tracks) ? tracks : [];
-  } catch {
-    return [];
-  }
-}
-
-const vssIdOf = (t: Record<string, unknown>) => String(t.vss_id ?? t.vssId ?? '');
-
 function readTracks(): CaptionTrackInfo[] {
-  return rawTracks().map((t) => ({
+  const tracks = playerResponse()?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+  return (Array.isArray(tracks) ? tracks : []).map((t) => ({
     languageCode: String(t.languageCode ?? ''),
-    vssId: vssIdOf(t),
+    vssId: String(t.vssId ?? ''),
     kind: String(t.kind ?? ''),
     name: String(t.languageName ?? t.displayName ?? ''),
+    baseUrl: String(t.baseUrl ?? ''),
   }));
+}
+
+function readVideoText(): string {
+  const details = playerResponse()?.videoDetails;
+  return `${details?.title ?? ''}\n${(details?.shortDescription ?? '').slice(0, 1000)}`;
 }
 
 /**
  * 运行在页面世界（MAIN world）：旁听 YouTube 播放器自己发出的字幕请求。
- * 字幕请求需要播放器生成的 pot 令牌，扩展自己去拉很可能拿到空结果，所以只能「旁听」。
- * 只读取响应，不修改任何返回值；任何异常都吞掉，绝不影响播放器。
- * 唯一的写操作：内容脚本明确发来 select-track 指令时切换字幕轨（自动字幕 → 人工字幕）。
+ * 字幕请求需要播放器生成的 pot 令牌，所以令牌只能靠旁听；内容脚本挑好原文轨后，
+ * 钩子用旁听到的令牌参数去拉那一条（fetch-track）。只读取响应和播放器数据，不改动播放器；任何异常都吞掉。
  * 设计见 docs/specs/2026-10-22-youtube-subtitles-design.md。
  */
 export default defineContentScript({
@@ -67,34 +61,35 @@ export default defineContentScript({
     const recent: TimedtextMessage[] = [];
     const publish = (url: string, body: string) => {
       if (!body) return;
-      const message: TimedtextMessage = { source: HOOK_SOURCE, type: 'timedtext', url, body };
-      // 自动字幕：附带字幕轨列表，由内容脚本决定是否换成人工字幕
-      if (url.includes('kind=asr')) message.tracks = readTracks();
+      const message: TimedtextMessage = {
+        source: HOOK_SOURCE,
+        type: 'timedtext',
+        url,
+        body,
+        tracks: readTracks(),
+        videoText: readVideoText(),
+      };
       recent.push(message);
       if (recent.length > 3) recent.shift();
       window.postMessage(message, location.origin);
     };
+    // 拉取用原始的 fetch，不经过下面的包装（否则会被当成播放器的请求再旁听一遍）
+    const originalFetch = window.fetch;
 
-    window.addEventListener('message', (e: MessageEvent<ReadyMessage | SelectTrackMessage>) => {
+    window.addEventListener('message', (e: MessageEvent<ReadyMessage | FetchTrackMessage>) => {
       if (e.source !== window || e.data?.source !== CONTENT_SOURCE) return;
       const data = e.data;
       if (data.type === 'ready') {
         for (const message of recent) window.postMessage(message, location.origin);
-      } else if (data.type === 'select-track') {
-        try {
-          // 优先用 tracklist 里的对象；没有时只传 languageCode。实测同语言同时有人工和自动字幕时，
-          // 只传 languageCode 播放器会选中人工字幕，正是我们要的
-          let list: Record<string, unknown>[] = [];
-          try {
-            list = player()?.getOption?.('captions', 'tracklist') ?? [];
-          } catch {
-            // 用 languageCode 兜底
-          }
-          const track = list.find((t) => vssIdOf(t) === data.vssId) ?? { languageCode: data.languageCode };
-          player()?.setOption?.('captions', 'track', track);
-        } catch {
-          // 切换失败就保持自动字幕
-        }
+      } else if (data.type === 'fetch-track' && isTimedtextUrl(data.url)) {
+        const reply = (body: string) =>
+          window.postMessage(
+            { source: HOOK_SOURCE, type: 'timedtext', url: data.url, body, fetched: true } satisfies TimedtextMessage,
+            location.origin,
+          );
+        originalFetch(data.url, { credentials: 'include' })
+          .then((res) => (res.ok ? res.text() : ''))
+          .then(reply, () => reply(''));
       }
     });
 
@@ -125,7 +120,6 @@ export default defineContentScript({
     } as typeof XMLHttpRequest.prototype.open;
 
     // fetch：以防播放器改用 fetch
-    const originalFetch = window.fetch;
     window.fetch = async function (this: typeof globalThis, ...args: Parameters<typeof fetch>) {
       const response = await originalFetch.apply(this, args);
       try {

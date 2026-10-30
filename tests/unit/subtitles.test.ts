@@ -5,7 +5,8 @@ import {
   nextBatch,
   parseJson3,
   parseTimedtextUrl,
-  pickManualTrack,
+  pickSourceTrack,
+  sourceTrackUrl,
   type Cue,
 } from '@/lib/subtitles';
 
@@ -88,23 +89,45 @@ describe('parseJson3：自动字幕合句', () => {
   });
 });
 
-describe('pickManualTrack', () => {
-  const track = (languageCode: string, auto: boolean) => ({
+describe('pickSourceTrack', () => {
+  const track = (languageCode: string, auto = false) => ({
     languageCode,
     vssId: `${auto ? 'a' : ''}.${languageCode}`,
     kind: auto ? 'asr' : '',
     name: languageCode,
+    baseUrl: `/api/timedtext?v=x&lang=${languageCode}${auto ? '&kind=asr' : ''}`,
+  });
+  const pick = (tracks: ReturnType<typeof track>[], lang: string, asr = false, text = '') =>
+    pickSourceTrack(tracks, { lang, asr }, 'zh-CN', text)?.vssId;
+
+  it('有自动字幕时按它判断语音语言：同语言人工字幕 → 英文 → 任意人工字幕 → 自动字幕', () => {
+    expect(pick([track('ja', true), track('en'), track('ja')], 'ja', true)).toBe('.ja');
+    expect(pick([track('ja', true), track('fr'), track('en')], 'ja', true)).toBe('.en');
+    expect(pick([track('ja', true), track('fr')], 'ja', true)).toBe('.fr');
+    expect(pick([track('ja', true)], 'ja', true)).toBe('a.ja');
   });
 
-  it('优先与自动字幕同语言的人工字幕，其次英文，再次任意', () => {
-    expect(pickManualTrack([track('ja', true), track('en', false), track('ja', false)], 'ja', 'zh-CN')?.vssId).toBe('.ja');
-    expect(pickManualTrack([track('ja', true), track('fr', false), track('en', false)], 'ja', 'zh-CN')?.vssId).toBe('.en');
-    expect(pickManualTrack([track('ja', true), track('fr', false)], 'ja', 'zh-CN')?.vssId).toBe('.fr');
+  it('没有自动字幕时按标题和简介判断语音语言（日语歌在韩语偏好下播放器加载的是英语轨）', () => {
+    const tracks = [track('en'), track('ja')];
+    expect(pick(tracks, 'en', false, 'YOASOBI - 群青 / THE FIRST TAKE\nこんにちは、今日は一発撮りで')).toBe('.ja');
+    // 判断不出来：用播放器加载的那条
+    expect(pick([track('fr'), track('de')], 'de')).toBe('.de');
   });
 
-  it('只有自动字幕，或人工字幕只有目标语言时不切换', () => {
-    expect(pickManualTrack([track('ja', true)], 'ja', 'zh-CN')).toBeUndefined();
-    expect(pickManualTrack([track('ja', true), track('zh-Hans', false)], 'ja', 'zh-CN')).toBeUndefined();
+  it('不选目标语言的轨；视频语音就是目标语言时不翻译', () => {
+    expect(pick([track('ja', true), track('zh-Hans')], 'ja', true)).toBe('a.ja');
+    expect(pick([track('zh-Hans', true), track('en')], 'en')).toBeUndefined();
+    expect(pick([track('en'), track('zh-Hans')], 'en', false, '今天我们来聊聊翻译这件事')).toBeUndefined();
+  });
+});
+
+describe('sourceTrackUrl', () => {
+  it('另一条轨的 baseUrl 补上播放器请求里的令牌参数，不继承自动翻译和轨道参数', () => {
+    const played = 'https://www.youtube.com/api/timedtext?v=x&sig=1&lang=en&kind=asr&pot=TOKEN&fmt=json3&tlang=ko&c=WEB';
+    const url = new URL(
+      sourceTrackUrl({ languageCode: 'ja', vssId: '.ja', kind: '', name: '', baseUrl: 'https://www.youtube.com/api/timedtext?v=x&sig=2&lang=ja' }, played),
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({ v: 'x', sig: '2', lang: 'ja', pot: 'TOKEN', fmt: 'json3', c: 'WEB' });
   });
 });
 
