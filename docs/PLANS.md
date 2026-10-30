@@ -44,7 +44,7 @@
 | AI 助手 = prompt 档案 | 🟡 每个服务一个自定义要求 | 多档案 + 按站点选择（P2） |
 | 文本 / 侧栏多模型对比 | ❌ | P3（当前只用一个模型，收益低） |
 | 编辑译文 | ❌ | P3 |
-| 视频字幕 | ✅ YouTube 双语字幕（旁听播放器字幕、按进度翻译、优先人工字幕） | 嵌入式播放器、Shorts、直播字幕待做 |
+| 视频字幕 | ✅ YouTube 双语字幕（旁听播放器字幕、按进度翻译、自己挑原文轨且人工字幕优先） | 嵌入式播放器、Shorts、直播字幕待做 |
 | PDF / EPUB / HTML 文件 | PDF ✅ / EPUB、HTML ❌ | PDF 用自带的本地 pdf.js 阅读器，文件不交给远程 Web App；EPUB、HTML 文件为 P3 |
 | 图片 / 漫画 OCR | ❌ | P3；deepseek-flash 支持图片输入，优先评估视觉模型 |
 | 截图区域 OCR | ❌ | P3，与图片翻译共用视觉模型通道 |
@@ -71,6 +71,7 @@
 ### P2 — 新场景
 
 - [x] 视频双语字幕（YouTube）— 已实现，E2E 与真实站点实测通过：[设计](specs/2026-10-22-youtube-subtitles-design.md) · [计划](plans/2026-10-22-youtube-subtitles.md)
+- [x] YouTube 字幕自己挑原文轨，不受字幕语言偏好和自动翻译影响、不改播放器设置（D70）— 已实现，E2E 与真实视频实测通过：[计划](plans/2026-10-29-youtube-source-track.md)
 - [x] 输入框翻译：Alt+I / 连按三次空格；过滤输入法组合输入；可撤销写回 — 已实现，E2E、真实模型与 ProseMirror / Lexical 实测通过：[设计](specs/2026-10-23-input-translate-design.md) · [计划](plans/2026-10-23-input-translate.md)
 - [x] AI 助手 / prompt 档案：技术、论文、新闻、GitHub 等预设风格，可按站点自动选择— 已实现：六种风格、按网站 / 论文元数据自动选择、弹窗按网站指定；E2E 与真实模型通过：[设计](specs/2026-10-23-prompt-profiles-design.md) · [计划](plans/2026-10-23-prompt-profiles.md)
 - [x] AI 抽取文章术语，保证长文前后译法一致（最多 12 条候选）— 已实现：并行抽取不阻塞首屏、冲突段落带术语重翻、弹窗查看；E2E 与真实模型通过：[设计](specs/2026-10-23-article-terms-design.md) · [计划](plans/2026-10-23-article-terms.md)

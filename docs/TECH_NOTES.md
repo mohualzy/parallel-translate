@@ -91,6 +91,8 @@
 ## YouTube
 
 - 字幕接口 `/api/timedtext` 自 2024 年起需要播放器生成的 `pot` 令牌，不能用 `captionTracks[].baseUrl` 直接请求。
+- 播放器的字幕请求 = 当前字幕轨的 `baseUrl` + `potc`、`pot`、`fmt=json3`、`xorb`/`xobt`/`xovt`、客户端信息（`c`、`cver`、`cplayer`…），自动翻译时再加 `tlang`。把这些参数（去掉 `tlang`、`lang`、`kind`、`name`）拼到另一条轨的 `baseUrl` 上，在页面里 `fetch` 就能拉到那条轨（2026-10-29 实测，《群青》的日语、英语轨都返回 200）。拉取要用钩子包装前的原始 `fetch`，否则会被当成播放器的请求再旁听一遍。
+- 全局字幕语言偏好存在 `localStorage` 的 `yt-player-caption-sticky-language`（如 `{"data":"ko"}`）：视频有这个语言就选它，没有就选上传者的默认轨（`audioTracks[].defaultCaptionTrackIndex`）再自动翻译成这个语言。播放器数据里没有视频原始语言的字段（`videoDetails`、`microformat` 都没有）。
 - 自动化浏览器（Playwright 自带的 Chromium，无头和有头模式都一样）打开视频会被拦截，显示「请登录，以便我们确认你不是聊天机器人」，视频不播放（2026-10-22，当前网络环境）。所以字幕功能的自动化测试用仿 YouTube 测试页（e2e 构建模式），真实站点只能手动验证。
 - 已确认的真实页面结构：`#movie_player`（`.html5-video-player`）、其中的 `<video>`、带 `aria-pressed` 的 `.ytp-subtitles-button`、`.ytp-caption-window-container`；控制栏隐藏时播放器带 `ytp-autohide` 类。播放器请求字幕的格式按 json3（`fmt=json3`）处理，尚未在真实页面上抓包确认。
 - 多个内容脚本共用同一个 `YOUTUBE_MATCHES` 数组对象，在 `build:manifestGenerated` 钩子里不能直接 `push`（会被追加多次），要赋新数组。
@@ -98,7 +100,7 @@
 - 双语字幕层显示期间原生字幕设为不可见，所以字幕层空着就是用户眼里的「字幕消失」：
   - 人工字幕的条目可能时间重叠（多人同时说话、画面文字注释），找当前条目不能只看最近开始的那条；
   - 字幕层没挂上时（首次挂载、被移除后重挂）要撤掉隐藏标记，重挂后要强制重新渲染当前条目。
-- 字幕轨列表与切换：页面世界的 `#movie_player` 元素上有非公开接口 `getOption('captions', 'tracklist')`（每条带 `languageCode`、`kind`（自动字幕为 `asr`）、`vss_id`（人工 `.en`、自动 `a.en`））和 `setOption('captions', 'track', track)`。只能在 MAIN world 调用，隔离世界拿不到这些方法。切换后播放器会重新请求一次 timedtext（不带 `kind=asr`）。
+- 字幕轨列表与切换（D70 起扩展不再调用 `setOption`，以下留作参考）：页面世界的 `#movie_player` 元素上有非公开接口 `getOption('captions', 'tracklist')`（每条带 `languageCode`、`kind`（自动字幕为 `asr`）、`vss_id`（人工 `.en`、自动 `a.en`））和 `setOption('captions', 'track', track)`。只能在 MAIN world 调用，隔离世界拿不到这些方法。切换后播放器会重新请求一次 timedtext（不带 `kind=asr`）。
 - 自动字幕的分词：英文每个词自带前导空格（`" guys"`），日文、中文没有空格，合句时要保留原始分隔。
 - 真实 YouTube 实测（2026-10-22，通过 web-access 的 CDP 连到日常 Chrome，不会被机器人检测拦截）：
   - 字幕请求确实是 `fmt=json3`，响应以 `{"wireMagic": "pb3"` 开头；自动字幕带 `kind=asr`。
