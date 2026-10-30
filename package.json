@@ -2,6 +2,7 @@
   "name": "parallel-translate",
   "version": "0.1.0",
   "description": "Bilingual web page translation with your own LLM API",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {

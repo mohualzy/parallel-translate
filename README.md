@@ -115,3 +115,7 @@ Reason: 用真实 DeepSeek API 验证模型遵守分段/占位协议（需要环
 just sweep HEAD~1
 ```
 Reason: 在十几个真实网站上用 mock 翻译跑仅译文模式，把当前代码和上一个提交的构建逐站对比，报告在 `test-results/sweep/report.md`（需要联网，不花 API 费用）
+
+## 许可证
+
+[MIT](LICENSE)
