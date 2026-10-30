@@ -281,6 +281,36 @@ test('真实模型：长文抽取出可解析的术语，同一术语在全文�
   await page.close();
 });
 
+test('真实模型：视频字幕带前后台词时遵守分段协议，预读输出可解析的摘要和术语', async () => {
+  test.setTimeout(180_000);
+  const page = await context.newPage();
+  await page.goto(`${server.url}/watch?v=long-talk`);
+  await page.waitForTimeout(500);
+  await page.locator('.ytp-subtitles-button').click();
+  const translated = page.locator('ptx-ui-subtitles .translated');
+  await expect(translated).toHaveText(/\p{Script=Han}/u, { timeout: 60_000 });
+  // 前后台词没有混进译文
+  await expect(translated).not.toContainText('<');
+  await expect(translated).not.toContainText('→');
+  console.log('字幕译文：', await translated.textContent());
+  await page.close();
+
+  const options = await context.newPage();
+  await options.goto(`chrome-extension://${extensionId}/options.html`);
+  const brief = await options.evaluate(
+    () =>
+      chrome.runtime.sendMessage({
+        type: 'video-brief',
+        title: 'Building an AI agent',
+        text: Array.from({ length: 30 }, (_, i) => `Line ${i}: the agent keeps working on the translation task.`).join('\n'),
+      }) as Promise<{ ok: boolean; data: { summary: string; terms: { source: string; target: string }[] } }>,
+  );
+  console.log('预读结果：', JSON.stringify(brief.data));
+  expect(brief.ok).toBe(true);
+  expect(brief.data.summary).toMatch(/\p{Script=Han}/u);
+  await options.close();
+});
+
 test('真实模型：侧栏多段文本译成中文，保留段落与列表；中文自动译成英文', async () => {
   test.setTimeout(120_000);
   const panel = await context.newPage();

@@ -168,7 +168,7 @@
               <textarea data-setting="glossary" rows="5" placeholder="LLM = 大语言模型&#10;agent = 智能体&#10;Kubernetes"></textarea>
               <small class="muted">只有页面里实际出现的术语才会发给模型；英文按整词、不区分大小写匹配。</small>
             </label>
-            <label class="check"><input type="checkbox" data-setting="extractTerms" /> 长文自动抽取术语，保证前后译法一致（每篇文章多一次请求；与上面的术语表冲突时以术语表为准）</label>
+            <label class="check"><input type="checkbox" data-setting="extractTerms" /> 长文和视频字幕自动抽取术语，保证前后译法一致；视频还会预读全片、生成内容摘要（每篇文章、每个视频多一次请求；与上面的术语表冲突时以术语表为准）</label>
           </div>
         </section>
 

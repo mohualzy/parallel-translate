@@ -1,9 +1,11 @@
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
+import { conflictsWithTerms, type GlossaryEntry } from '@/lib/glossary';
 import { isProbablyInLanguage } from '@/lib/languages';
 import { sendToBackground } from '@/lib/messages';
 import { getSettings, onSettingsChanged, type Settings } from '@/lib/settings';
 import {
   activeCueIndex,
+  batchContext,
   nextBatch,
   parseJson3,
   parseTimedtextUrl,
@@ -27,6 +29,11 @@ interface Track {
   auto: boolean;
   states: CueState[];
   translations: (string | undefined)[];
+  /** 全片预读的结果：内容摘要和术语，每批翻译都带上 */
+  summary: string;
+  terms: GlossaryEntry[];
+  /** 预读结果到达后 +1：发出时还没有术语的批次，返回后要检查冲突 */
+  termsVersion: number;
 }
 
 /** 只翻译当前时间往后 2 分钟内的字幕，往回 5 秒（拖回去时立刻有译文） */
@@ -35,6 +42,11 @@ const MAX_INFLIGHT = 2;
 const TICK_MS = 100;
 /** 翻译失败的条目过一会儿再重试 */
 const RETRY_MS = 15_000;
+/** 每批带上的前后台词条数 */
+const CONTEXT = { before: 4, after: 3 };
+/** 全片预读：字幕太短没必要，太长只读开头（约一小时的台词） */
+const BRIEF_MIN_CHARS = 200;
+const BRIEF_MAX_CHARS = 40_000;
 
 /**
  * YouTube 双语字幕（设计见 docs/specs/2026-10-22-youtube-subtitles-design.md）：
@@ -122,9 +134,36 @@ export class YouTubeSubtitles {
       auto: info.asr,
       states: cues.map(() => 'idle'),
       translations: [],
+      summary: '',
+      terms: [],
+      termsVersion: 0,
     };
     this.rendered = '';
+    void this.preread(this.track);
     return true;
+  }
+
+  /** 全片预读：和翻译并行，不阻塞字幕；术语回来后，已翻好但和术语冲突的条目回到待翻译 */
+  private async preread(track: Track) {
+    if (!this.settings.extractTerms) return;
+    const text = track.cues.map((c) => c.text).join('\n');
+    if (text.length < BRIEF_MIN_CHARS) return;
+    try {
+      const brief = await sendToBackground({ type: 'video-brief', title: videoTitle(), text: text.slice(0, BRIEF_MAX_CHARS) });
+      track.summary = brief.summary;
+      track.terms = brief.terms;
+      track.termsVersion++;
+      track.states.forEach((state, i) => {
+        if (state === 'done' && this.conflicts(track, i)) track.states[i] = 'idle';
+      });
+    } catch {
+      // 预读失败不影响翻译，只是少了上下文
+    }
+  }
+
+  private conflicts(track: Track, index: number): boolean {
+    const translation = track.translations[index];
+    return !!translation && conflictsWithTerms(track.terms, this.settings.glossary, track.cues[index]!.text, translation);
   }
 
   private player(): HTMLElement | null {
@@ -194,17 +233,31 @@ export class YouTubeSubtitles {
   }
 
   private async translate(track: Track, batch: number[]) {
+    const version = track.termsVersion;
+    const { before, after } = batchContext(track.cues, batch, track.translations, CONTEXT);
     try {
       const res = await sendToBackground({
         type: 'translate',
         segments: batch.map((i) => escapeText(track.cues[i]!.text)),
-        page: { title: videoTitle(), summary: '', subtitles: true },
+        page: {
+          title: videoTitle(),
+          summary: track.summary,
+          subtitles: true,
+          terms: track.terms,
+          scope: track.videoId,
+          around: {
+            before: before.map((l) => ({ text: escapeText(l.text), translation: l.translation && escapeText(l.translation) })),
+            after: after.map(escapeText),
+          },
+        },
       });
       batch.forEach((cueIndex, j) => {
         const text = res.translations[j];
         if (text) {
           track.states[cueIndex] = 'done';
           track.translations[cueIndex] = unescapeText(text.replace(/<\/?[gx]\d+\s*\/?>/g, '')).trim();
+          // 发出时还没有术语：返回后和已翻好的条目一样检查（只查一次，模型不用术语也不会反复重翻）
+          if (version < track.termsVersion && this.conflicts(track, cueIndex)) track.states[cueIndex] = 'idle';
         } else {
           this.markFailed(track, cueIndex);
         }

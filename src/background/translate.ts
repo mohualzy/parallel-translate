@@ -8,11 +8,15 @@ import {
   buildInputMessages,
   buildSelectionMessages,
   buildTermsMessages,
+  buildVideoBriefMessages,
   buildTextMessages,
   cleanInputOutput,
   INPUT_PROMPT_VERSION,
   parseTerms,
+  parseVideoBrief,
   TERMS_PROMPT_VERSION,
+  VIDEO_BRIEF_PROMPT_VERSION,
+  type VideoBrief,
   TEXT_PROMPT_VERSION,
   SELECTION_PROMPT_VERSION,
   stripReasoning,
@@ -79,10 +83,21 @@ function cacheKey(
   segment: string,
   glossary: GlossaryEntry[],
   profile: string,
+  scope: string | undefined,
 ): Promise<string> {
   const terms = matchGlossary(glossary, [segment]).map((e) => (e.condition ? [e.source, e.target, e.condition] : [e.source, e.target]));
   return cache.sha256(
-    JSON.stringify([provider.baseURL, provider.model, settings.targetLang, PROMPT_VERSION, provider.prompt, profile, terms, segment]),
+    JSON.stringify([
+      provider.baseURL,
+      provider.model,
+      settings.targetLang,
+      PROMPT_VERSION,
+      provider.prompt,
+      profile,
+      terms,
+      segment,
+      ...(scope ? [scope] : []),
+    ]),
   );
 }
 
@@ -103,7 +118,7 @@ export async function translateSegments(segments: string[], page: PageContext): 
   const glossary = mergeGlossary(parseGlossary(settings.glossary), page.terms ?? []);
   // 档案计入缓存键：换了风格，旧译文不会被误用（通用档案沿用 'general'）
   const profile = page.profile ?? 'general';
-  const keys = await Promise.all(segments.map((s) => cacheKey(provider, settings, s, glossary, profile)));
+  const keys = await Promise.all(segments.map((s) => cacheKey(provider, settings, s, glossary, profile, page.scope)));
   const cached = await cache.getMany(keys);
   const translations = keys.map((k) => cached.get(k) ?? null);
   const missing = translations.flatMap((t, i) => (t === null ? [i] : []));
@@ -116,6 +131,7 @@ export async function translateSegments(segments: string[], page: PageContext): 
     title: page.title,
     summary: page.summary,
     subtitles: page.subtitles,
+    around: page.around,
     fixedLayout: page.fixedLayout,
   };
   const outcome = await translateBatch(
@@ -247,6 +263,24 @@ export async function extractTerms(text: string): Promise<GlossaryEntry[]> {
     const terms = parseTerms(await complete(provider, buildTermsMessages(text, settings.targetLang, known)), text);
     await cache.setMany([[key, JSON.stringify(terms)]]).catch(() => undefined);
     return terms;
+  } catch (err) {
+    throw new Error(describeError(err, provider));
+  }
+}
+
+/** 视频全片预读（设计文档第 3 点）：一次请求，结果按字幕内容缓存，同一视频只付一次 */
+export async function videoBrief(title: string, text: string): Promise<VideoBrief> {
+  const [settings, provider] = await Promise.all([getSettings(), requireProvider()]);
+  const key = await cache.sha256(
+    JSON.stringify(['video-brief', provider.baseURL, provider.model, settings.targetLang, VIDEO_BRIEF_PROMPT_VERSION, settings.glossary, title, text]),
+  );
+  const hit = (await cache.getMany([key])).get(key);
+  if (hit !== undefined) return JSON.parse(hit) as VideoBrief;
+  try {
+    const messages = buildVideoBriefMessages(text, title, settings.targetLang, parseGlossary(settings.glossary));
+    const brief = parseVideoBrief(await complete(provider, messages), text);
+    await cache.setMany([[key, JSON.stringify(brief)]]).catch(() => undefined);
+    return brief;
   } catch (err) {
     throw new Error(describeError(err, provider));
   }

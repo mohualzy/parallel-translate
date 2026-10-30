@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   activeCueIndex,
+  batchContext,
   cleanCueText,
   nextBatch,
   parseJson3,
@@ -154,6 +155,21 @@ describe('activeCueIndex', () => {
     expect(activeCueIndex(overlap, 1500)).toBe(1);
     expect(activeCueIndex(overlap, 3000)).toBe(0);
     expect(activeCueIndex(overlap, 5000)).toBe(-1);
+  });
+});
+
+describe('batchContext', () => {
+  const cues: Cue[] = ['a', 'b', 'c', 'd', 'e'].map((text, i) => ({ start: i, end: i + 1, text }));
+
+  it('取本批前后的台词，前文带已有译文；到头到尾时能取多少取多少', () => {
+    expect(batchContext(cues, [2, 3], ['甲', undefined], { before: 2, after: 2 })).toEqual({
+      before: [
+        { text: 'a', translation: '甲' },
+        { text: 'b', translation: undefined },
+      ],
+      after: ['e'],
+    });
+    expect(batchContext(cues, [0], [], { before: 2, after: 1 })).toEqual({ before: [], after: ['b'] });
   });
 });
 

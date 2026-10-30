@@ -28,6 +28,9 @@ export interface MockServer {
   /** 术语抽取请求收到的正文，以及要返回的术语行（`原文 = 译法`） */
   extractions: string[];
   termsOutput: string;
+  /** 视频全片预读请求收到的字幕，以及要返回的内容（摘要行 + 术语行） */
+  briefs: string[];
+  briefOutput: string;
   /** 匹配的段原样返回（模拟模型对人名、产品名不做翻译） */
   echoWhen: ((segment: string) => boolean) | null;
   /** 多段请求时故意漏掉匹配的段，模拟模型漏段 */
@@ -54,6 +57,13 @@ export const MOCK_CUES = [
   { start: 300_000, end: 303_000, text: 'A far away line near the end of the video.' },
 ];
 
+/** 长视频：30 条字幕，每条 3 秒，用来验证分批时的上下文和全片预读 */
+const LONG_CUES = Array.from({ length: 30 }, (_, i) => ({
+  start: i * 3000,
+  end: (i + 1) * 3000,
+  text: `Line ${i}: the agent keeps working on the translation task.`,
+}));
+
 function timedtext(videoId: string, lang: string, asr: boolean, tlang: string | null) {
   // 自动生成字幕：逐词带时间偏移（英文词自带前导空格）
   if (asr) {
@@ -70,6 +80,8 @@ function timedtext(videoId: string, lang: string, asr: boolean, tlang: string | 
       ? [{ start: 0, end: 120_000, text: '이 줄은 YouTube가 한국어로 자동 번역했습니다.' }]
       : lang === 'ja'
       ? [{ start: 0, end: 120_000, text: '朝が来て渋谷の街に。' }]
+      : videoId.startsWith('long-talk')
+      ? LONG_CUES
       : videoId === 'second'
       ? [{ start: 0, end: 120_000, text: 'Second video subtitle line.' }]
       : videoId === 'mixed'
@@ -89,7 +101,7 @@ function extractSegments(content: string): string[] {
 }
 
 export async function startMockServer(): Promise<MockServer> {
-  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], systems: [], users: [], selections: [], inputs: [], texts: [], delayMs: 0, extractions: [], termsOutput: '', failWith: null, echoWhen: null, dropWhen: null };
+  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], systems: [], users: [], selections: [], inputs: [], texts: [], delayMs: 0, extractions: [], termsOutput: '', briefs: [], briefOutput: '', failWith: null, echoWhen: null, dropWhen: null };
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -160,6 +172,15 @@ export async function startMockServer(): Promise<MockServer> {
         await new Promise((r) => setTimeout(r, 300));
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ choices: [{ message: { content: state.termsOutput } }] }));
+        return;
+      }
+      // 视频全片预读：<transcript> 包着字幕（稍晚返回，模拟第一批先于预读翻译完）
+      const transcript = /<transcript>([\s\S]*?)<\/transcript>/.exec(user)?.[1];
+      if (transcript !== undefined) {
+        state.briefs.push(transcript);
+        await new Promise((r) => setTimeout(r, 300));
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ choices: [{ message: { content: state.briefOutput } }] }));
         return;
       }
       const segments = extractSegments(user);

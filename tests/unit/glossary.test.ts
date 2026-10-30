@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchGlossary, parseGlossary } from '@/lib/glossary';
+import { conflictsWithTerms, matchGlossary, parseGlossary } from '@/lib/glossary';
 import { buildMessages, buildSelectionMessages } from '@/lib/providers/prompt';
 
 describe('parseGlossary', () => {
@@ -54,5 +54,16 @@ describe('术语注入 prompt', () => {
     expect(plain?.content).not.toContain('术语表');
     const [selection] = buildSelectionMessages('fox', { targetLang: 'en', word: true, glossary });
     expect(selection?.content).toContain('Glossary');
+  });
+});
+
+describe('conflictsWithTerms', () => {
+  const terms = [{ source: 'agent', target: '智能体' }];
+
+  it('原文命中术语、译文没用该译法才算冲突；用户术语表里的词不算', () => {
+    expect(conflictsWithTerms(terms, '', 'The agent runs.', '代理运行。')).toBe(true);
+    expect(conflictsWithTerms(terms, '', 'The agent runs.', '智能体运行。')).toBe(false);
+    expect(conflictsWithTerms(terms, '', 'The tool runs.', '工具运行。')).toBe(false);
+    expect(conflictsWithTerms(terms, 'agent = 代理', 'The agent runs.', '代理运行。')).toBe(false);
   });
 });

@@ -530,6 +530,63 @@ test('YouTube 字幕：日语歌在韩语字幕偏好下（播放器显示英语
   await page.close();
 });
 
+test('YouTube 字幕：全片预读一次，每批带上摘要、术语和前后台词；和术语冲突的条目只重翻一次', async () => {
+  server.briefOutput = '摘要：一段关于智能体的访谈。\nagent = 智能体\nmade up term = 不存在';
+  const briefsBefore = server.briefs.length;
+  const page = await context.newPage();
+  await page.goto(`${server.url}/watch?v=long-talk`);
+  await page.waitForTimeout(500);
+  await page.locator('.ytp-subtitles-button').click();
+  await expect(page.locator('ptx-ui-subtitles .translated')).toContainText('【译】Line 0');
+  await expect.poll(() => server.briefs.length).toBe(briefsBefore + 1);
+  expect(server.briefs.at(-1)).toContain('Line 29:');
+
+  // 第一批在预读返回前就翻好了；mock 的译文不含「智能体」，算冲突，带着术语和摘要重翻
+  const withBrief = (text: string) =>
+    server.batches.findIndex(
+      (b, i) =>
+        b.some((s) => s.startsWith(text)) &&
+        server.systems[i]!.includes('agent → 智能体') &&
+        server.users[i]!.includes('视频内容摘要（仅供参考，不要翻译）：一段关于智能体的访谈。'),
+    );
+  await expect.poll(() => withBrief('Line 0:')).toBeGreaterThanOrEqual(0);
+  // 前后台词：第一批看得到第二批的开头，第二批看得到第一批的结尾，这些行都不算待翻译的片段
+  const first = server.batches.findIndex((b) => b.some((s) => s.startsWith('Line 0:')));
+  expect(server.batches[first]).toHaveLength(25);
+  expect(server.users[first]).toMatch(/<after>\nLine 25:[\s\S]*Line 27:[^\n]*\n<\/after>/);
+  const second = server.batches.findIndex((b) => b.some((s) => s.startsWith('Line 25:')));
+  expect(server.users[second]).toMatch(/<before>\nLine 21:[\s\S]*Line 24:[^\n]*\n<\/before>/);
+
+  // 模型不用术语也不会反复重翻
+  await expect.poll(() => withBrief('Line 25:')).toBeGreaterThanOrEqual(0);
+  const settled = server.batches.length;
+  await page.waitForTimeout(1500);
+  expect(server.batches.length).toBe(settled);
+  await page.close();
+});
+
+test('YouTube 字幕：关闭术语抽取时不预读，字幕太短时不预读', async () => {
+  const briefsBefore = server.briefs.length;
+  await setSettings({ extractTerms: false });
+  try {
+    const page = await context.newPage();
+    await page.goto(`${server.url}/watch?v=long-talk-off`);
+    await page.waitForTimeout(500);
+    await page.locator('.ytp-subtitles-button').click();
+    await expect(page.locator('ptx-ui-subtitles .translated')).toContainText('【译】Line 0');
+    await page.close();
+  } finally {
+    await setSettings({ extractTerms: true });
+  }
+  const page = await context.newPage();
+  await page.goto(`${server.url}/watch?v=second`);
+  await page.waitForTimeout(500);
+  await page.locator('.ytp-subtitles-button').click();
+  await expect(page.locator('ptx-ui-subtitles .translated')).toHaveText('【译】Second video subtitle line.');
+  expect(server.briefs.length).toBe(briefsBefore);
+  await page.close();
+});
+
 test('解除截断：省略号容器里的译文完整可见，关闭翻译后复原', async () => {
   const page = await context.newPage();
   await page.goto(`${server.url}/page.html`);

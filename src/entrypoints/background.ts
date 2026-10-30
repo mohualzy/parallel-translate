@@ -3,6 +3,7 @@ import { defineBackground } from 'wxt/utils/define-background';
 import * as cache from '@/background/cache';
 import {
   extractTerms,
+  videoBrief,
   listModels,
   testProvider,
   translateInput,
@@ -64,6 +65,8 @@ async function handle(
       return translateInput(request.text);
     case 'extract-terms':
       return extractTerms(request.text);
+    case 'video-brief':
+      return videoBrief(request.title, request.text);
     case 'test-provider':
       return testProvider(request.provider);
     case 'list-models':

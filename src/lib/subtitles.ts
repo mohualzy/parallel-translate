@@ -174,6 +174,20 @@ export function nextBatch(
   return batch;
 }
 
+/** 本批前后的台词（原文 + 已有译文）：批与批交界处的代词、跨批的句子靠它理解 */
+export function batchContext(
+  cues: Cue[],
+  batch: number[],
+  translations: (string | undefined)[],
+  size: { before: number; after: number },
+): { before: { text: string; translation?: string }[]; after: string[] } {
+  const first = batch[0]!;
+  const last = batch[batch.length - 1]!;
+  const before = [];
+  for (let i = Math.max(0, first - size.before); i < first; i++) before.push({ text: cues[i]!.text, translation: translations[i] });
+  return { before, after: cues.slice(last + 1, last + 1 + size.after).map((c) => c.text) };
+}
+
 /** 视频的一条字幕轨（来自页面世界的 getPlayerResponse().captions…captionTracks） */
 export interface CaptionTrackInfo {
   languageCode: string;

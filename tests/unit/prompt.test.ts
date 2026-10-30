@@ -3,11 +3,13 @@ import {
   buildMessages,
   buildInputMessages,
   buildSelectionMessages,
+  buildVideoBriefMessages,
   cleanInputOutput,
   DEFAULT_STYLE_PROMPT,
   DEFAULT_STYLE_PROMPT_ZH,
   isSingleWord,
   parseSegments,
+  parseVideoBrief,
 } from '@/lib/providers/prompt';
 
 describe('buildMessages', () => {
@@ -40,6 +42,48 @@ describe('buildMessages', () => {
     const [system] = buildMessages(['x'], { targetLang: 'ja', stylePrompt: 'Use polite form.' });
     expect(system?.content).toContain(`${DEFAULT_STYLE_PROMPT}\nAdditional requirements: Use polite form.`);
     expect(system?.content).toContain('<s id="0">');
+  });
+});
+
+describe('视频字幕上下文', () => {
+  it('字幕用「视频」的说法；前后台词放在片段前后，不是 <s> 片段', () => {
+    const [, user] = buildMessages(['Next line'], {
+      targetLang: 'zh-CN',
+      title: 'T',
+      summary: 'S',
+      subtitles: true,
+      around: { before: [{ text: 'Old', translation: '旧' }, { text: 'Pending' }], after: ['Later'] },
+    });
+    expect(user?.content).toContain('视频标题（仅供参考，不要翻译）：T\n视频内容摘要（仅供参考，不要翻译）：S');
+    expect(user?.content).toContain(
+      '<before>\nOld → 旧\nPending\n</before>\n\n<s id="0">Next line</s>\n\n后文（只用于理解，不要翻译、不要输出）：\n<after>\nLater\n</after>',
+    );
+    expect(parseSegments('<s id="0">下一句</s>', 1)).toEqual(['下一句']);
+  });
+
+  it('没有前后台词时不输出空块', () => {
+    const [, user] = buildMessages(['Only'], { targetLang: 'en', around: { before: [], after: [] } });
+    expect(user?.content).toBe('<s id="0">Only</s>');
+  });
+
+  it('预读把标题和字幕放进 user 消息，指令留在 system', () => {
+    const [system, user] = buildVideoBriefMessages('Hello', 'My video', 'zh-CN', [{ source: 'agent', target: '智能体' }]);
+    expect(system?.content).toContain('已有术语，不要重复：agent');
+    expect(system?.content).not.toContain('Hello');
+    expect(user?.content).toBe('视频标题：My video\n<transcript>Hello</transcript>');
+  });
+
+  it('解析预读结果：摘要 + 字幕里确实出现的术语', () => {
+    const output = '<think>想一想</think>\n摘要：两位工程师聊智能体。语气轻松。\nagent = 智能体\n1. Sarah = 莎拉\nmade up = 不存在';
+    expect(parseVideoBrief(output, 'The agent works. Sarah agrees.')).toEqual({
+      summary: '两位工程师聊智能体。语气轻松。',
+      terms: [
+        { source: 'agent', target: '智能体' },
+        { source: 'Sarah', target: '莎拉' },
+      ],
+    });
+    expect(parseVideoBrief('Summary: A song about doubt.', 'x')).toEqual({ summary: 'A song about doubt.', terms: [] });
+    expect(parseVideoBrief('nonsense', 'x')).toEqual({ summary: '', terms: [] });
   });
 });
 

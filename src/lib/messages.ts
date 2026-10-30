@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser';
 import { sendWithInject } from './inject';
 import type { GlossaryEntry } from './glossary';
+import type { SurroundingLines, VideoBrief } from './providers/prompt';
 import type { ProviderConfig } from './settings';
 
 // ---------- 页面 / 设置页 → background ----------
@@ -12,6 +13,10 @@ export interface PageContext {
   summary: string;
   /** 内容是视频字幕：相邻片段是连续台词，译文要口语、简洁 */
   subtitles?: boolean;
+  /** 视频字幕：本批前后的台词 */
+  around?: SurroundingLines;
+  /** 译文依赖上下文、不宜跨内容复用时的缓存范围（视频 ID），计入缓存键 */
+  scope?: string;
   /** 内容来自 PDF 版面：译文要放回原位置，提示模型保持简洁 */
   fixedLayout?: boolean;
   /** 翻译风格档案 id（lib/profiles.ts），由内容脚本按网站解析 */
@@ -24,6 +29,8 @@ export type BackgroundRequest =
   | { type: 'translate'; segments: string[]; page: PageContext }
   /** 长文术语抽取：从正文抽取全文需要一致的术语 */
   | { type: 'extract-terms'; text: string }
+  /** 视频全片预读：从整条字幕得到内容摘要和术语 */
+  | { type: 'video-brief'; title: string; text: string }
   /** 输入框翻译：译成 inputTargetLang */
   | { type: 'translate-input'; text: string }
   | { type: 'test-provider'; provider: ProviderConfig }
@@ -52,6 +59,7 @@ export interface BackgroundResponses {
   translate: TranslateResult;
   'translate-input': string;
   'extract-terms': GlossaryEntry[];
+  'video-brief': VideoBrief;
   'test-provider': { text: string; ms: number };
   'list-models': string[];
   'clear-cache': null;
