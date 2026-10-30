@@ -102,6 +102,9 @@
   - 字幕层没挂上时（首次挂载、被移除后重挂）要撤掉隐藏标记，重挂后要强制重新渲染当前条目。
 - 字幕每批的前后台词放在 user 消息的 `<before>`、`<after>` 里，不用 `<s>` 标签，`parseSegments` 不会把它们算进片段（deepseek-flash 实测不会译出来）。
 - 演唱的语音识别基本不可用：YOASOBI《群青》MV 只有日语自动字幕，68 条里 49 条全是拉丁字母，45 条不超过 8 个字符（`ni`、`me`、`car`），原生字幕同样是这些内容。字幕层只会如实显示和翻译。
+- 视频分类在 `getPlayerResponse().microformat.playerMicroformatRenderer.category`（音乐是 `Music`）；`videoDetails` 里没有 `musicVideoType` 这类字段。
+- 播放器的 CC 按钮在页面加载约几秒后才按用户偏好打开，且请求字幕可能晚到二十多秒（后台标签页）。测试脚本过早点击 CC 会把它关掉，看起来像字幕层没出现。
+- LRCLIB `/api/search` 同一首歌有多条记录，时长参差（《群青》从 170 到 300 秒，时间轴却相同），`duration` 只能用来排序，不能当准确时长。
 - 字幕轨列表与切换（D70 起扩展不再调用 `setOption`，以下留作参考）：页面世界的 `#movie_player` 元素上有非公开接口 `getOption('captions', 'tracklist')`（每条带 `languageCode`、`kind`（自动字幕为 `asr`）、`vss_id`（人工 `.en`、自动 `a.en`））和 `setOption('captions', 'track', track)`。只能在 MAIN world 调用，隔离世界拿不到这些方法。切换后播放器会重新请求一次 timedtext（不带 `kind=asr`）。
 - 自动字幕的分词：英文每个词自带前导空格（`" guys"`），日文、中文没有空格，合句时要保留原始分隔。
 - 真实 YouTube 实测（2026-10-22，通过 web-access 的 CDP 连到日常 Chrome，不会被机器人检测拦截）：
