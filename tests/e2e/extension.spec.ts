@@ -425,6 +425,11 @@ test('YouTube 字幕：打开 CC 后显示原文 + 译文并跟随播放；按�
   await expect(original).toHaveText('Today we talk about translation.', { timeout: 8000 });
   await expect(translated).toHaveText('【译】Today we talk about translation.');
 
+  // 字幕层被页面移除：重新挂上并立即显示当前这一条，不等下一条字幕
+  await page.evaluate(() => document.querySelector('ptx-ui-subtitles')!.remove());
+  await expect(original).toHaveText('Today we talk about translation.');
+  await expect(translated).toHaveText('【译】Today we talk about translation.');
+
   // 只翻译当前时间附近的字幕：5 分钟处那条还没有请求；请求上下文标注为视频字幕
   const batchIndex = server.batches.findIndex((b) => b.some((s) => s.includes('Hello and welcome')));
   expect(server.batches[batchIndex]).not.toContain('A far away line near the end of the video.');

@@ -137,7 +137,12 @@ export class YouTubeSubtitles {
     }
 
     void this.overlay.attach(player);
-    if (!this.overlay.ready) return;
+    // 字幕层还没挂上（首次挂载或被移除后重挂）：先让原生字幕顶上，挂载失败也不会一直看不到字幕
+    if (!this.overlay.ready) {
+      document.documentElement.removeAttribute('data-ptx-subtitles');
+      this.rendered = '';
+      return;
+    }
     // 由我们的字幕层接管显示，原生字幕设为不可见（见 youtube/style.css）
     document.documentElement.setAttribute('data-ptx-subtitles', '');
 
