@@ -15,6 +15,23 @@
         </ul>
       </li>
     </ul>
+    <!-- 仿 Kubernetes 侧栏另一种分组标题：label 里只有链接，展开三角画在 label 上；只藏链接，label 留着 -->
+    <style>
+      #side-link-label::before { content: '▸'; padding-right: 4px; }
+      #side-link-label { display: inline-block; }
+      .sidebar-link { display: block; }
+    </style>
+    <ul>
+      <li id="side-link-sec">
+        <input type="checkbox" id="side-link-toggle" style="display: none" />
+        <label for="side-link-toggle" id="side-link-label"><a href="/cluster" id="side-link" class="sidebar-link">Cluster architecture</a></label>
+        <ul>
+          <li><a href="/nodes">Nodes and their lifecycle</a></li>
+        </ul>
+      </li>
+    </ul>
+    <!-- 仿 Python 文档页头：label 里有下拉框，整段藏会把下拉框一起藏掉 -->
+    <div id="theme-row"><label id="theme-label">Theme <select id="theme-select"><option>Auto</option><option>Light</option><option>Dark</option></select></label></div>
     <!-- 仿 GitHub 顶部导航：按钮里是「文字 + 块级图标」，图标按 em 定大小 -->
     <nav>
       <button type="button" id="icon-btn" style="display: flex; align-items: center; font-size: 20px">

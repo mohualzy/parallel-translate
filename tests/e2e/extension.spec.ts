@@ -647,6 +647,33 @@ test('仅译文模式：带交互的元素（label）不部分隐藏、照常可
   await page.close();
 });
 
+test('仅译文模式：label 里只有链接时只藏链接、label 和展开三角留着；含看得见的下拉框的段落不整段藏，译文里不出现选项文字', async () => {
+  await setSettings({ displayMode: 'translation' });
+  const page = await context.newPage();
+  try {
+    await page.goto(`${server.url}/interactive.html`);
+    await toggle(page);
+    await expect(page.locator('#side-link-sec > ptx-t')).toHaveText('【译】Cluster architecture');
+    await expect(page.locator('#side-link')).toHaveAttribute('data-ptx-hide-node', '');
+    await expect(page.locator('#side-link-sec > ptx-t')).toHaveClass(/ptx-replace/);
+    await expect(page.locator('#side-link-label')).not.toHaveAttribute('data-ptx-hide-node', '');
+    await expect(page.locator('#side-link-label')).toBeVisible();
+    // 原链接是块级的：译文里的副本按行内显示，和展开三角在同一行
+    const top = (sel: string) => page.locator(sel).evaluate((el) => Math.round(el.getBoundingClientRect().top));
+    expect(Math.abs((await top('#side-link-sec > ptx-t a')) - (await top('#side-link-label')))).toBeLessThan(8);
+    await page.locator('#side-link-label').click();
+    await expect(page.locator('#side-link-toggle')).toBeChecked();
+
+    await expect(page.locator('#theme-row > ptx-t')).toContainText('【译】Theme');
+    await expect(page.locator('#theme-row > ptx-t')).not.toContainText('Light');
+    await expect(page.locator('#theme-row')).not.toHaveAttribute('data-ptx-hide', '');
+    await expect(page.locator('#theme-select')).toBeVisible();
+  } finally {
+    await setSettings({ displayMode: 'bilingual' });
+  }
+  await page.close();
+});
+
 test('仅译文模式：按钮里「文字 + 块级图标」整段替换文字，图标保留且大小不变；切回双语后标记清除', async () => {
   await setSettings({ displayMode: 'translation' });
   const page = await context.newPage();

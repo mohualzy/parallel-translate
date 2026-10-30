@@ -85,6 +85,35 @@ function isPlainContent(el: Element): boolean {
   return !links.some(isScriptLink);
 }
 
+/**
+ * 交互元素（label 等）里的文字全在真实链接里时，返回这些链接：只藏链接，元素本身留着（Kubernetes 侧栏的
+ * <label><a>Concepts</a></label>，展开三角画在 label 上）。点译文里的链接副本会转给原链接，效果不变。
+ * 有裸文字、有别的带文字元素、链接里还有交互元素时返回 undefined。
+ */
+function linksInside(el: Element): Element[] | undefined {
+  if (el.matches(FORM_CONTROL)) return undefined;
+  const links: Element[] = [];
+  for (const child of el.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      if (child.textContent?.trim()) return undefined;
+      continue;
+    }
+    if (child.nodeType !== Node.ELEMENT_NODE || !(child as Element).textContent?.trim()) continue;
+    if ((child as Element).localName !== 'a' || !isPlainContent(child as Element)) return undefined;
+    links.push(child as Element);
+  }
+  return links.length > 0 ? links : undefined;
+}
+
+/** 看得见的表单控件：整段隐藏会把它一起藏掉（Python 文档页头的主题下拉框） */
+const FORM_CONTROL = 'input:not([type="hidden"]),select,textarea';
+const hasVisibleFormControl = (nodes: Node[]) =>
+  nodes.some(
+    (n) =>
+      n.nodeType === Node.ELEMENT_NODE &&
+      [...((n as Element).matches(FORM_CONTROL) ? [n as Element] : []), ...(n as Element).querySelectorAll(FORM_CONTROL)].some(isRendered),
+  );
+
 /** 元素最宽的一行：块级元素就是盒子宽度；行内元素跨多行时盒子只代表最后一行，要看每一行的片段 */
 function widestLine(el: Element): number {
   return Math.max(0, ...Array.from(el.getClientRects(), (r) => r.width));
@@ -732,12 +761,15 @@ export class PageTranslator {
    * - 段落占满容器：容器 font-size:0 隐藏原文文本节点，CSS 隐藏原文子元素，译文显式设回字号；
    *   与段落并列的图标（装饰元素）不藏，打 data-ptx-keep 设回它原来的字号；
    * - 段落只占容器一部分（目录项后面跟着子目录、列表项编号后面跟着正文块）：容器里还有别的内容，不能整个藏。
-   *   段落里只有元素（链接、行内标签）时给这些元素打 data-ptx-hide-node 直接隐藏；有裸文字时不包裹节点就藏不住，保持双语。
+   *   段落里只有元素（链接、行内标签）时给这些元素打 data-ptx-hide-node 直接隐藏；交互元素里的文字全在链接里时只藏链接；
+   *   有裸文字时不包裹节点就藏不住，保持双语。
+   * - 段落里有看得见的表单控件时不整段隐藏（会连控件一起藏掉），保持双语。
    */
   private applyHide(p: Paragraph, hide: boolean) {
     const container = p.container;
     if (hide && p.el && !p.noHide) {
-      if (p.whole) {
+      // 段落里有看得见的表单控件：整段藏会连控件一起藏掉，保持双语
+      if (p.whole && !hasVisibleFormControl(p.nodes)) {
         if (!container.hasAttribute('data-ptx-hide')) {
           const cs = getComputedStyle(container);
           p.font = [cs.fontSize, cs.lineHeight];
@@ -754,9 +786,11 @@ export class PageTranslator {
       }
       const elements = p.nodes.filter((n): n is Element => n.nodeType === Node.ELEMENT_NODE);
       const bareText = p.nodes.some((n) => n.nodeType === Node.TEXT_NODE && n.textContent?.trim());
-      if (elements.length > 0 && !bareText && elements.every(isPlainContent)) {
-        for (const el of elements) el.setAttribute('data-ptx-hide-node', '');
-        p.hiddenNodes = elements;
+      const targets = bareText ? undefined : elements.map((el) => (isPlainContent(el) ? [el] : linksInside(el)));
+      if (elements.length > 0 && targets?.every((t) => t !== undefined)) {
+        const hidden = targets.flat() as Element[];
+        for (const el of hidden) el.setAttribute('data-ptx-hide-node', '');
+        p.hiddenNodes = hidden;
         p.el.classList.add('ptx-replace');
         return;
       }

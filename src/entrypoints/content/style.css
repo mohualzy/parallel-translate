@@ -173,4 +173,9 @@ ptx-t.ptx-error {
     display: inline !important;
     margin: 0 !important;
   }
+
+  /* 译文行内顶替原文时，链接副本也按行内显示：原链接是块级的（Kubernetes 侧栏 a.td-sidebar-link）会让译文另起一行 */
+  ptx-t.ptx-replace > ptx-i > a {
+    display: inline !important;
+  }
 }
