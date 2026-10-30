@@ -1,7 +1,7 @@
 import { isProbablyInLanguage } from '@/lib/languages';
 import { sendToBackground, type TabState } from '@/lib/messages';
 import type { Settings } from '@/lib/settings';
-import { matchGlossary, parseGlossary, type GlossaryEntry } from '@/lib/glossary';
+import { conflictsWithTerms, type GlossaryEntry } from '@/lib/glossary';
 import { findSiteRule } from '@/lib/site-rules';
 import { collectRuns, runContainsPoint, type Run } from './collect';
 import { buildExcludeSelector, composedParent, CONTENT_CONTAINERS, DomClassifier, looksLikeUIChrome, OWN_TAG } from './dom';
@@ -534,14 +534,8 @@ export class PageTranslator {
     );
   }
 
-  /** 译文没有采用本文术语的译法（用户术语表里的词不算，它从一开始就在 prompt 里） */
   private conflictsWithTerms(p: Paragraph): boolean {
-    const translation = p.translation;
-    if (!translation) return false;
-    const user = new Set(parseGlossary(this.settings.glossary).map((e) => e.source.toLowerCase()));
-    return matchGlossary(this.articleTerms, [p.plain]).some(
-      (e) => !user.has(e.source.toLowerCase()) && !translation.includes(e.target),
-    );
+    return !!p.translation && conflictsWithTerms(this.articleTerms, this.settings.glossary, p.plain, p.translation);
   }
 
   // ---------- 懒翻译与批量请求 ----------

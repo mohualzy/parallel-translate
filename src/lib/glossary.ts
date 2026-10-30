@@ -66,3 +66,12 @@ export function mergeGlossary(user: GlossaryEntry[], article: GlossaryEntry[]): 
   const known = new Set(user.map((e) => e.source.toLowerCase()));
   return [...user, ...article.filter((e) => !known.has(e.source.toLowerCase()))];
 }
+
+/**
+ * 译文没有采用抽取术语的译法，需要带着术语重翻。
+ * 用户术语表里的词不算：它从一开始就在 prompt 里。
+ */
+export function conflictsWithTerms(terms: GlossaryEntry[], userGlossary: string, source: string, translation: string): boolean {
+  const user = new Set(parseGlossary(userGlossary).map((e) => e.source.toLowerCase()));
+  return matchGlossary(terms, [source]).some((e) => !user.has(e.source.toLowerCase()) && !translation.includes(e.target));
+}
