@@ -31,6 +31,9 @@ export interface MockServer {
   /** 视频全片预读请求收到的字幕，以及要返回的内容（摘要行 + 术语行） */
   briefs: string[];
   briefOutput: string;
+  /** LRCLIB 请求的查询串，以及要返回的结果 */
+  lyricsRequests: string[];
+  lyricsRecords: { duration: number; syncedLyrics: string }[];
   /** 匹配的段原样返回（模拟模型对人名、产品名不做翻译） */
   echoWhen: ((segment: string) => boolean) | null;
   /** 多段请求时故意漏掉匹配的段，模拟模型漏段 */
@@ -64,7 +67,18 @@ const LONG_CUES = Array.from({ length: 30 }, (_, i) => ({
   text: `Line ${i}: the agent keeps working on the translation task.`,
 }));
 
+/** 音乐视频的同步歌词：比自动字幕早 2 秒，3 句 */
+export const MOCK_LYRICS = '[00:00.00]朝が来て渋谷の街に光が降る\n[00:06.00]いつもの道を歩いて行く\n[00:12.00]好きなものを好きだと言う\n[00:18.00]';
+
 function timedtext(videoId: string, lang: string, asr: boolean, tlang: string | null) {
+  // 音乐视频的自动字幕：比歌词晚 2 秒，夹着听错的碎片
+  if (asr && videoId.startsWith('mv-')) {
+    const line = (tStartMs: number, utf8: string) => ({ tStartMs, dDurationMs: 3000, segs: [{ utf8 }] });
+    return {
+      wireMagic: 'pb3',
+      events: [line(2000, '朝が来て渋谷の町に光'), line(5000, 'ni'), line(8000, 'いつもの道を歩いて'), line(14_000, '好きなものを好き言う')],
+    };
+  }
   // 自动生成字幕：逐词带时间偏移（英文词自带前导空格）
   if (asr) {
     const words = ['auto', ' generated', ' words', ' here.'];
@@ -101,7 +115,7 @@ function extractSegments(content: string): string[] {
 }
 
 export async function startMockServer(): Promise<MockServer> {
-  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], systems: [], users: [], selections: [], inputs: [], texts: [], delayMs: 0, extractions: [], termsOutput: '', briefs: [], briefOutput: '', failWith: null, echoWhen: null, dropWhen: null };
+  const state: Omit<MockServer, 'url' | 'close'> = { batches: [], systems: [], users: [], selections: [], inputs: [], texts: [], delayMs: 0, extractions: [], termsOutput: '', briefs: [], briefOutput: '', lyricsRequests: [], lyricsRecords: [], failWith: null, echoWhen: null, dropWhen: null };
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -141,6 +155,14 @@ export async function startMockServer(): Promise<MockServer> {
       }
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify(timedtext(p.get('v') ?? '', p.get('lang') ?? '', p.get('kind') === 'asr', p.get('tlang'))));
+      return;
+    }
+
+    // 仿 LRCLIB：测试里把后台对 lrclib.net 的请求转到这里
+    if (req.method === 'GET' && url.pathname === '/api/search') {
+      state.lyricsRequests.push(url.search);
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(state.lyricsRecords));
       return;
     }
 

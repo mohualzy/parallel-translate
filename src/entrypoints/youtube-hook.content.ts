@@ -8,13 +8,15 @@ import {
   type FetchTrackMessage,
   type ReadyMessage,
   type TimedtextMessage,
+  type VideoMeta,
 } from '@/lib/youtube';
 
 /** YouTube 播放器元素上的（非公开）接口，只读取播放器数据 */
 interface YouTubePlayer extends HTMLElement {
   getPlayerResponse?(): {
     captions?: { playerCaptionsTracklistRenderer?: { captionTracks?: Record<string, unknown>[] } };
-    videoDetails?: { title?: string; shortDescription?: string };
+    videoDetails?: { videoId?: string; title?: string; author?: string; lengthSeconds?: string; shortDescription?: string };
+    microformat?: { playerMicroformatRenderer?: { category?: string } };
   };
 }
 
@@ -46,6 +48,18 @@ function readVideoText(): string {
   return `${details?.title ?? ''}\n${(details?.shortDescription ?? '').slice(0, 1000)}`;
 }
 
+function readVideoMeta(): VideoMeta {
+  const response = playerResponse();
+  const details = response?.videoDetails;
+  return {
+    videoId: details?.videoId ?? '',
+    title: details?.title ?? '',
+    author: details?.author ?? '',
+    seconds: Number(details?.lengthSeconds ?? 0),
+    music: response?.microformat?.playerMicroformatRenderer?.category === 'Music',
+  };
+}
+
 /**
  * 运行在页面世界（MAIN world）：旁听 YouTube 播放器自己发出的字幕请求。
  * 字幕请求需要播放器生成的 pot 令牌，所以令牌只能靠旁听；内容脚本挑好原文轨后，
@@ -68,6 +82,7 @@ export default defineContentScript({
         body,
         tracks: readTracks(),
         videoText: readVideoText(),
+        video: readVideoMeta(),
       };
       recent.push(message);
       if (recent.length > 3) recent.shift();

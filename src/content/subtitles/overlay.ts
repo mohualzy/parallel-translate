@@ -5,6 +5,13 @@ import overlayCss from './overlay.css?inline';
 /** 字号占播放器高度的比例（与 YouTube 原生字幕接近） */
 const FONT_RATIO = 0.042;
 
+/** 字幕来源标记：自动字幕提醒可能听错，歌词说明原文不是视频自带的字幕 */
+export type SubtitleBadge = 'auto' | 'lyrics';
+const BADGES: Record<SubtitleBadge, { text: string; title: string }> = {
+  auto: { text: '自动字幕', title: '这一轨是 YouTube 自动生成（语音识别）的字幕，可能听错，译文也会跟着错' },
+  lyrics: { text: '歌词', title: '视频只有自动字幕，原文换成了 LRCLIB 的同步歌词' },
+};
+
 /**
  * 双语字幕层：挂在播放器元素里（全屏时也可见），Shadow DOM 隔离样式，不拦截鼠标。
  */
@@ -35,7 +42,7 @@ export class SubtitleOverlay {
     this.ui.root.innerHTML = `
       <div class="layer" hidden>
         <div class="box">
-          <div class="badge" title="这一轨是 YouTube 自动生成（语音识别）的字幕，可能听错，译文也会跟着错">自动字幕</div>
+          <div class="badge"></div>
           <div class="original"></div><div class="translated"></div>
         </div>
       </div>`;
@@ -54,9 +61,13 @@ export class SubtitleOverlay {
     return this.ui?.host.isConnected === true;
   }
 
-  show(original: string, translated: string | undefined, showOriginal: boolean, controlsVisible: boolean, auto: boolean) {
+  show(original: string, translated: string | undefined, showOriginal: boolean, controlsVisible: boolean, badge?: SubtitleBadge) {
     if (!this.layer || !this.original || !this.translated || !this.badge) return;
-    this.badge.hidden = !auto;
+    this.badge.hidden = !badge;
+    if (badge) {
+      this.badge.textContent = BADGES[badge].text;
+      this.badge.title = BADGES[badge].title;
+    }
     this.layer.hidden = false;
     this.layer.dataset.controls = String(controlsVisible);
     this.original.hidden = !showOriginal;

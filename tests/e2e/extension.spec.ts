@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { chromium, expect, test, type BrowserContext, type Page, type Worker } from '@playwright/test';
 import type { browser } from 'wxt/browser';
 import { samplePdf } from './fixtures/sample-pdf';
-import { startMockServer, type MockServer } from './mock-server';
+import { MOCK_LYRICS, startMockServer, type MockServer } from './mock-server';
 
 // sw.evaluate 的回调运行在扩展的 Service Worker 里，那里有全局 chrome
 declare const chrome: typeof browser;
@@ -585,6 +585,60 @@ test('YouTube 字幕：关闭术语抽取时不预读，字幕太短时不预读
   await expect(page.locator('ptx-ui-subtitles .translated')).toHaveText('【译】Second video subtitle line.');
   expect(server.briefs.length).toBe(briefsBefore);
   await page.close();
+});
+
+/** 把后台对 lrclib.net 的请求转到 mock 服务（Service Worker 重启后失效，每个用例开头调用） */
+function useMockLyrics() {
+  return sw.evaluate((base) => {
+    const original = self.fetch;
+    self.fetch = (input, init) => original(String(input).replace('https://lrclib.net', base), init);
+  }, server.url);
+}
+
+test('YouTube 字幕：只有自动字幕的音乐视频换成对齐后的同步歌词，自动字幕不送去翻译', async () => {
+  await useMockLyrics();
+  server.lyricsRecords = [{ duration: 200, syncedLyrics: MOCK_LYRICS }];
+  const page = await context.newPage();
+  await page.goto(`${server.url}/watch?v=mv-hit`);
+  await page.waitForTimeout(500);
+  await page.locator('.ytp-subtitles-button').click();
+  const original = page.locator('ptx-ui-subtitles .original');
+  // 歌词第一句在 0 秒，偏移 2 秒后在视频的 2 秒处出现
+  await expect(original).toHaveText('朝が来て渋谷の街に光が降る');
+  await expect(page.locator('ptx-ui-subtitles .translated')).toHaveText('【译】朝が来て渋谷の街に光が降る');
+  await expect(page.locator('ptx-ui-subtitles .badge')).toHaveText('歌词');
+  expect(new URLSearchParams(server.lyricsRequests.at(-1)).get('artist_name')).toBe('Mock Artist');
+  expect(new URLSearchParams(server.lyricsRequests.at(-1)).get('track_name')).toBe('青い朝');
+  expect(server.lyricsRequests.at(-1)).not.toContain('mv-hit');
+  expect(server.batches.flat().some((s) => s.includes('渋谷の町'))).toBe(false);
+  await page.close();
+});
+
+test('YouTube 字幕：查不到歌词时保留自动字幕；关闭设置后不查询', async () => {
+  await useMockLyrics();
+  const miss = await context.newPage();
+  server.lyricsRecords = [];
+  await miss.goto(`${server.url}/watch?v=mv-miss`);
+  await miss.waitForTimeout(500);
+  await miss.locator('.ytp-subtitles-button').click();
+  await expect(miss.locator('ptx-ui-subtitles .original')).toHaveText('朝が来て渋谷の町に光');
+  await expect(miss.locator('ptx-ui-subtitles .translated')).toHaveText('【译】朝が来て渋谷の町に光');
+  await expect(miss.locator('ptx-ui-subtitles .badge')).toHaveText('自动字幕');
+  await miss.close();
+
+  const before = server.lyricsRequests.length;
+  await setSettings({ videoLyrics: false });
+  try {
+    const off = await context.newPage();
+    await off.goto(`${server.url}/watch?v=mv-off`);
+    await off.waitForTimeout(500);
+    await off.locator('.ytp-subtitles-button').click();
+    await expect(off.locator('ptx-ui-subtitles .badge')).toHaveText('自动字幕');
+    expect(server.lyricsRequests.length).toBe(before);
+    await off.close();
+  } finally {
+    await setSettings({ videoLyrics: true });
+  }
 });
 
 test('解除截断：省略号容器里的译文完整可见，关闭翻译后复原', async () => {

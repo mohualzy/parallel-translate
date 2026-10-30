@@ -8,6 +8,16 @@ export const YOUTUBE_MATCHES = ['*://www.youtube.com/*'];
 export const HOOK_SOURCE = 'ptx-youtube-hook';
 export const CONTENT_SOURCE = 'ptx-youtube-content';
 
+/** 播放器数据里的视频信息 */
+export interface VideoMeta {
+  videoId: string;
+  title: string;
+  author: string;
+  seconds: number;
+  /** 视频分类是音乐 */
+  music: boolean;
+}
+
 /** 页面世界 → 内容脚本：旁听到一次播放器字幕请求的响应，或按 fetch-track 拉到的字幕 */
 export interface TimedtextMessage {
   source: typeof HOOK_SOURCE;
@@ -21,6 +31,8 @@ export interface TimedtextMessage {
   tracks?: CaptionTrackInfo[];
   /** 播放器请求时附带：视频标题和简介，没有自动字幕时用来判断视频语音的语言 */
   videoText?: string;
+  /** 播放器请求时附带：视频信息 */
+  video?: VideoMeta;
 }
 
 /** 内容脚本 → 页面世界：内容脚本已就绪，请补发缓存的字幕 */

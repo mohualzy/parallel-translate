@@ -1,6 +1,7 @@
 import { browser, type Browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
 import * as cache from '@/background/cache';
+import { lookupLyrics } from '@/background/lyrics';
 import {
   extractTerms,
   videoBrief,
@@ -67,6 +68,8 @@ async function handle(
       return extractTerms(request.text);
     case 'video-brief':
       return videoBrief(request.title, request.text);
+    case 'lookup-lyrics':
+      return lookupLyrics(request.artist, request.track, request.seconds, request.lang);
     case 'test-provider':
       return testProvider(request.provider);
     case 'list-models':

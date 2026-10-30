@@ -44,15 +44,24 @@
         vss_id: `${kind === 'asr' ? 'a' : ''}.${languageCode}`,
         baseUrl: `/api/timedtext?v=${videoId()}&lang=${languageCode}${kind === 'asr' ? '&kind=asr' : ''}`,
       });
-      // mixed：默认加载自动字幕，但另有人工字幕；asronly：只有自动字幕；
+      // mixed：默认加载自动字幕，但另有人工字幕；asronly：只有自动字幕；mv-*：只有日语自动字幕的音乐视频；
       // ja-song：日语歌，只有英语、日语人工字幕，用户的字幕语言偏好是韩语，播放器加载英语轨并自动翻译成韩语；其他视频：英语人工字幕
       const TRACKS = {
         mixed: () => [track('en', 'asr'), track('en')],
         asronly: () => [track('en', 'asr')],
+        'mv-hit': () => [track('ja', 'asr')],
+        'mv-miss': () => [track('ja', 'asr')],
+        'mv-off': () => [track('ja', 'asr')],
         'ja-song': () => [track('en'), track('ja')],
       };
       const tracks = () => (TRACKS[videoId()] ?? (() => [track('en')]))();
-      const DETAILS = { 'ja-song': { title: 'YOASOBI - 群青 / THE FIRST TAKE', shortDescription: '今日は一発撮りでお届けします。' } };
+      const MV = { title: 'Mock Artist「青い朝」Official Music Video', author: 'Mock Artist', lengthSeconds: '200', shortDescription: '' };
+      const DETAILS = {
+        'ja-song': { title: 'YOASOBI - 群青 / THE FIRST TAKE', shortDescription: '今日は一発撮りでお届けします。' },
+        'mv-hit': MV,
+        'mv-miss': { ...MV, title: 'Mock Artist「知らない歌」Official Music Video' },
+        'mv-off': { ...MV, title: 'Mock Artist「別の歌」Official Music Video' },
+      };
       // 模拟 YouTube「自动翻译」（打开 CC 时按偏好自动选的）：tlang-en 翻成英文，tlang-zh 翻成简体中文，ja-song 翻成韩语
       const AUTO_TLANG = { 'tlang-en': '&tlang=en', 'tlang-zh': '&tlang=zh-Hans', 'ja-song': '&tlang=ko' };
       const request = (t, tlang = '') => {
@@ -66,7 +75,8 @@
             captionTracks: tracks().map((t) => ({ languageCode: t.languageCode, kind: t.kind || undefined, vssId: t.vss_id, baseUrl: t.baseUrl })),
           },
         },
-        videoDetails: DETAILS[videoId()] ?? { title: 'Mock Video', shortDescription: 'A video about translation.' },
+        videoDetails: { videoId: videoId(), ...(DETAILS[videoId()] ?? { title: 'Mock Video', shortDescription: 'A video about translation.' }) },
+        microformat: { playerMicroformatRenderer: { category: videoId().startsWith('mv-') ? 'Music' : 'Education' } },
       });
       player.setOption = (module, option, wanted) => {
         if (module !== 'captions' || option !== 'track') return;

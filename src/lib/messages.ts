@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser';
 import { sendWithInject } from './inject';
 import type { GlossaryEntry } from './glossary';
+import type { Lyrics } from './lyrics';
 import type { SurroundingLines, VideoBrief } from './providers/prompt';
 import type { ProviderConfig } from './settings';
 
@@ -31,6 +32,8 @@ export type BackgroundRequest =
   | { type: 'extract-terms'; text: string }
   /** 视频全片预读：从整条字幕得到内容摘要和术语 */
   | { type: 'video-brief'; title: string; text: string }
+  /** 音乐视频查同步歌词（只发歌手和歌名，见硬性规则 8） */
+  | { type: 'lookup-lyrics'; artist: string; track: string; seconds: number; lang: string }
   /** 输入框翻译：译成 inputTargetLang */
   | { type: 'translate-input'; text: string }
   | { type: 'test-provider'; provider: ProviderConfig }
@@ -60,6 +63,7 @@ export interface BackgroundResponses {
   'translate-input': string;
   'extract-terms': GlossaryEntry[];
   'video-brief': VideoBrief;
+  'lookup-lyrics': Lyrics | null;
   'test-provider': { text: string; ms: number };
   'list-models': string[];
   'clear-cache': null;

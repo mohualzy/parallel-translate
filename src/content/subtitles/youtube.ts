@@ -1,6 +1,7 @@
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import { conflictsWithTerms, type GlossaryEntry } from '@/lib/glossary';
 import { isProbablyInLanguage } from '@/lib/languages';
+import { alignLyrics, lyricsToCues, songQuery } from '@/lib/lyrics';
 import { sendToBackground } from '@/lib/messages';
 import { getSettings, onSettingsChanged, type Settings } from '@/lib/settings';
 import {
@@ -15,9 +16,16 @@ import {
   sourceTrackUrl,
   type Cue,
 } from '@/lib/subtitles';
-import { CONTENT_SOURCE, HOOK_SOURCE, type FetchTrackMessage, type ReadyMessage, type TimedtextMessage } from '@/lib/youtube';
+import {
+  CONTENT_SOURCE,
+  HOOK_SOURCE,
+  type FetchTrackMessage,
+  type ReadyMessage,
+  type TimedtextMessage,
+  type VideoMeta,
+} from '@/lib/youtube';
 import { escapeText, unescapeText } from '../richtext';
-import { SubtitleOverlay } from './overlay';
+import { SubtitleOverlay, type SubtitleBadge } from './overlay';
 
 type CueState = 'idle' | 'pending' | 'done' | 'error';
 
@@ -26,8 +34,8 @@ interface Track {
   /** 语言 + 是否自动字幕 + 自动翻译语言：同一视频重复请求同一轨时复用已有译文 */
   key: string;
   cues: Cue[];
-  /** 自动生成（语音识别）字幕：字幕层显示「自动字幕」标记 */
-  auto: boolean;
+  /** 字幕层显示的来源标记：人工字幕不标记 */
+  badge?: SubtitleBadge;
   states: CueState[];
   translations: (string | undefined)[];
   /** 全片预读的结果：内容摘要和术语，每批翻译都带上 */
@@ -35,6 +43,8 @@ interface Track {
   terms: GlossaryEntry[];
   /** 预读结果到达后 +1：发出时还没有术语的批次，返回后要检查冲突 */
   termsVersion: number;
+  /** 音乐视频查询歌词期间不翻译：查到后条目会被替换，这时翻译的钱就白花了 */
+  waitingLyrics: boolean;
 }
 
 /** 只翻译当前时间往后 2 分钟内的字幕，往回 5 秒（拖回去时立刻有译文） */
@@ -66,6 +76,8 @@ export class YouTubeSubtitles {
   private lastPlayed = new Map<string, string>();
   /** 用户在字幕菜单里换过轨的视频：跟随用户选的轨 */
   private userPicked = new Set<string>();
+  /** 最近一次播放器请求带来的视频信息 */
+  private video?: VideoMeta;
 
   constructor(private readonly ctx: ContentScriptContext) {
     this.overlay = new SubtitleOverlay(ctx);
@@ -92,6 +104,7 @@ export class YouTubeSubtitles {
       if (!this.apply(message.url, message.body)) this.apply(pending.fallback.url, pending.fallback.body);
       return;
     }
+    this.video = message.video;
     // 播放器加载哪条取决于用户的全局字幕语言偏好，可能还经过 YouTube 自动翻译：原文轨由我们挑，
     // 和播放器加载的不是同一条时，请钩子用播放器的令牌参数去拉（设计文档第 6 点）
     const info = parseTimedtextUrl(message.url);
@@ -133,16 +146,44 @@ export class YouTubeSubtitles {
       videoId: info.videoId,
       key,
       cues,
-      auto: info.asr,
+      badge: info.asr ? 'auto' : undefined,
       states: cues.map(() => 'idle'),
       translations: [],
       summary: '',
       terms: [],
       termsVersion: 0,
+      waitingLyrics: false,
     };
     this.rendered = '';
-    void this.preread(this.track);
+    void this.loadLyrics(this.track, info.lang).then((track) => this.preread(track));
     return true;
+  }
+
+  /**
+   * 只有自动字幕的音乐视频，换成同步歌词（设计文档第 7 点）。语音识别听不清演唱，自动字幕改不好，只能换来源。
+   * 查不到、对不上都保留自动字幕；用户在字幕菜单里自己选的轨不替换。
+   */
+  private async loadLyrics(track: Track, lang: string): Promise<Track> {
+    const video = this.video;
+    const eligible =
+      track.badge === 'auto' && video?.music && video.videoId === track.videoId && !this.userPicked.has(track.videoId);
+    if (!eligible || !this.settings.videoLyrics) return track;
+    track.waitingLyrics = true;
+    try {
+      const song = songQuery(video.title, video.author);
+      const lyrics = await sendToBackground({ type: 'lookup-lyrics', ...song, seconds: video.seconds, lang });
+      const offset = lyrics ? alignLyrics(track.cues, lyrics, video.seconds) : null;
+      if (lyrics && offset !== null) {
+        track.cues = lyricsToCues(lyrics.lines, offset);
+        track.states = track.cues.map(() => 'idle');
+        track.badge = 'lyrics';
+        this.rendered = '';
+      }
+    } catch {
+      // 查询失败不影响字幕，继续用自动字幕
+    }
+    track.waitingLyrics = false;
+    return track;
   }
 
   /** 全片预读：和翻译并行，不阻塞字幕；术语回来后，已翻好但和术语冲突的条目回到待翻译 */
@@ -216,17 +257,17 @@ export class YouTubeSubtitles {
     const controls = !player.classList.contains('ytp-autohide');
     const showOriginal = this.settings.displayMode === 'bilingual';
     const translation = index === -1 ? undefined : track.translations[index];
-    const key = `${index}|${translation ?? ''}|${controls}|${showOriginal}|${track.auto}`;
+    const key = `${index}|${translation ?? ''}|${controls}|${showOriginal}|${track.badge}`;
     if (key === this.rendered) return;
     this.rendered = key;
     if (index === -1) this.overlay.hide();
-    else this.overlay.show(track.cues[index]!.text, translation, showOriginal, controls, track.auto);
+    else this.overlay.show(track.cues[index]!.text, translation, showOriginal, controls, track.badge);
   }
 
   /** 按播放进度补翻：窗口内还有未翻译的条目且并发未满时发起下一批 */
   private schedule(ms: number) {
     const track = this.track;
-    if (!track || this.inflight >= MAX_INFLIGHT) return;
+    if (!track || track.waitingLyrics || this.inflight >= MAX_INFLIGHT) return;
     const batch = nextBatch(track.cues, ms, (i) => track.states[i] === 'idle', WINDOW);
     if (batch.length === 0) return;
     for (const i of batch) track.states[i] = 'pending';

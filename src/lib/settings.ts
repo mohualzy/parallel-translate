@@ -32,6 +32,8 @@ export interface Settings {
   translateTitle: boolean;
   /** YouTube 打开字幕时显示双语字幕 */
   youtubeSubtitles: boolean;
+  /** 只有自动字幕的音乐视频，向 LRCLIB 查同步歌词当原文（只发歌手和歌名） */
+  videoLyrics: boolean;
   /** 输入框翻译（Alt+I / 连按三次空格）的目标语言，与网页翻译的目标语言无关 */
   inputTargetLang: string;
   /** 输入框末尾连按三次空格触发翻译 */
@@ -92,6 +94,7 @@ export const DEFAULT_SETTINGS: Settings = {
   unclamp: true,
   translateTitle: true,
   youtubeSubtitles: true,
+  videoLyrics: true,
   inputTargetLang: 'en',
   inputSpaceTrigger: true,
   autoTranslateForeign: false,
