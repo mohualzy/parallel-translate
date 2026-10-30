@@ -100,6 +100,7 @@
 - 双语字幕层显示期间原生字幕设为不可见，所以字幕层空着就是用户眼里的「字幕消失」：
   - 人工字幕的条目可能时间重叠（多人同时说话、画面文字注释），找当前条目不能只看最近开始的那条；
   - 字幕层没挂上时（首次挂载、被移除后重挂）要撤掉隐藏标记，重挂后要强制重新渲染当前条目。
+- 字幕每批的前后台词放在 user 消息的 `<before>`、`<after>` 里，不用 `<s>` 标签，`parseSegments` 不会把它们算进片段（deepseek-flash 实测不会译出来）。
 - 字幕轨列表与切换（D70 起扩展不再调用 `setOption`，以下留作参考）：页面世界的 `#movie_player` 元素上有非公开接口 `getOption('captions', 'tracklist')`（每条带 `languageCode`、`kind`（自动字幕为 `asr`）、`vss_id`（人工 `.en`、自动 `a.en`））和 `setOption('captions', 'track', track)`。只能在 MAIN world 调用，隔离世界拿不到这些方法。切换后播放器会重新请求一次 timedtext（不带 `kind=asr`）。
 - 自动字幕的分词：英文每个词自带前导空格（`" guys"`），日文、中文没有空格，合句时要保留原始分隔。
 - 真实 YouTube 实测（2026-10-22，通过 web-access 的 CDP 连到日常 Chrome，不会被机器人检测拦截）：
