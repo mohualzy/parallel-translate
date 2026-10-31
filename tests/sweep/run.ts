@@ -109,7 +109,7 @@ rmSync(OUT, { recursive: true, force: true });
 run('pnpm build:e2e');
 let baseResults: Record<string, Partial<SiteMetrics>> | undefined;
 if (BASE) {
-  git('rev-parse', '--verify', `${BASE}^{commit}`);
+  git('rev-parse', '--verify', BASE);
   dropWorktree();
   git('worktree', 'add', '--detach', WORKTREE, BASE);
   try {

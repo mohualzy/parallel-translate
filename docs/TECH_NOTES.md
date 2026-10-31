@@ -57,6 +57,7 @@
 - TypeScript 7（原生实现）与 WXT 0.21 生成的 tsconfig 兼容，`tsc --noEmit` 可用。
 - WXT 0.21 中 `vite` 是 peer dependency，需要显式安装。
 - justfile 在 Windows 上用 `powershell.exe` 执行（`set windows-shell`）。
+- msys64 的 `git.exe` 会把参数里的 `{…}` 当花括号展开，`<提交>^{commit}` 解析失败。脚本里校验提交直接用 `git rev-parse --verify <提交>`。
 
 ## 真实模型
 
