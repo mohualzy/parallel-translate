@@ -75,6 +75,7 @@
 - [x] 视频字幕上下文：滑动窗口 + 全片预读（摘要 + 术语）（D71）— 已实现，E2E 与真实模型实测通过：[计划](plans/2026-10-30-video-context.md)
 - [x] 丢弃自动字幕里听错的外文碎片（D72）— 已实现
 - [x] 只有自动字幕的音乐视频用 LRCLIB 同步歌词当原文（D73）— 已实现，E2E 与真实歌曲实测通过：[计划](plans/2026-10-30-video-lyrics.md)
+- [x] LaTeX 源码渲染成公式：网页、划词、侧栏（D76）— 已实现，E2E 与真实模型实测通过：[设计](specs/2026-10-31-latex-rendering-design.md) · [计划](plans/2026-10-31-latex-rendering.md)
 - [x] 输入框翻译：Alt+I / 连按三次空格；过滤输入法组合输入；可撤销写回 — 已实现，E2E、真实模型与 ProseMirror / Lexical 实测通过：[设计](specs/2026-10-23-input-translate-design.md) · [计划](plans/2026-10-23-input-translate.md)
 - [x] AI 助手 / prompt 档案：技术、论文、新闻、GitHub 等预设风格，可按站点自动选择— 已实现：六种风格、按网站 / 论文元数据自动选择、弹窗按网站指定；E2E 与真实模型通过：[设计](specs/2026-10-23-prompt-profiles-design.md) · [计划](plans/2026-10-23-prompt-profiles.md)
 - [x] AI 抽取文章术语，保证长文前后译法一致（最多 12 条候选）— 已实现：并行抽取不阻塞首屏、冲突段落带术语重翻、弹窗查看；E2E 与真实模型通过：[设计](specs/2026-10-23-article-terms-design.md) · [计划](plans/2026-10-23-article-terms.md)
