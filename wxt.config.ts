@@ -23,6 +23,11 @@ export default defineConfig({
           files.push({ absoluteSrc: path.join(PDFJS_DIR, dir, name), relativeDest: `pdfjs/${dir}/${name}` });
         }
       }
+      // MIT 和 Apache-2.0 都要求分发时附带许可全文
+      files.push(
+        { absoluteSrc: path.resolve('LICENSE'), relativeDest: 'LICENSE' },
+        { absoluteSrc: path.join(PDFJS_DIR, 'LICENSE'), relativeDest: 'pdfjs/LICENSE' },
+      );
     },
     // e2e 构建（`wxt build --mode e2e`）让 YouTube 脚本额外匹配本地 mock 服务，用仿 YouTube 的测试页验证字幕功能；
     // 网页内容脚本不匹配 preinstalled.html，模拟安装扩展前就打开的页面。正式构建的 manifest 不受影响。
