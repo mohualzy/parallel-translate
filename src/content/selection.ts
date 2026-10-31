@@ -4,6 +4,7 @@ import { isProbablyInLanguage } from '@/lib/languages';
 import { SELECTION_PORT, type SelectionEvent, type SelectionRequest } from '@/lib/messages';
 import { isSingleWord } from '@/lib/providers/prompt';
 import type { Settings } from '@/lib/settings';
+import { setTexText } from '@/lib/tex-render';
 import { OWN_TAG } from './dom';
 import { onTeardown } from './lifecycle';
 import { highlightSupported, MARK_STYLES, PageMarks, type MarkStyle } from './marks';
@@ -59,6 +60,8 @@ export class SelectionTranslator {
   private panel?: HTMLElement;
   private port?: Port;
   private captured?: Captured;
+  /** 译文原文：公式渲染后弹窗里的文字混着 MathML，复制时用这份 */
+  private resultText = '';
 
   constructor(
     private readonly ctx: ContentScriptContext,
@@ -201,6 +204,7 @@ export class SelectionTranslator {
     const show = (state: 'loading' | 'streaming' | 'done' | 'error', text: string) => {
       result.dataset.state = state;
       result.textContent = text;
+      this.resultText = text;
     };
     show('loading', '翻译中…');
     panel.hidden = false;
@@ -217,6 +221,7 @@ export class SelectionTranslator {
         show('streaming', received);
       } else if (event.type === 'done') {
         show('done', event.text);
+        void setTexText(result, event.text).then(() => placeNear(panel, captured.rect));
       } else {
         show('error', `翻译失败：${event.error}`);
       }
@@ -237,9 +242,8 @@ export class SelectionTranslator {
   }
 
   private async copy(button: HTMLButtonElement) {
-    const text = this.panel?.querySelector('.result')?.textContent ?? '';
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(this.resultText);
       button.textContent = '已复制';
     } catch {
       button.textContent = '复制失败';

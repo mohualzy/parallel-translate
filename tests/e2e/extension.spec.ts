@@ -1948,6 +1948,82 @@ test('设置页：显示已配置服务，测试连接与获取模型列表可�
   await page.close();
 });
 
+test('LaTeX：公式占位给模型，译文里渲染成 MathML；价格、shell 变量、代码不动，语法错误保留源码', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/tex.html`);
+  await toggle(page);
+
+  await expect(translation(page, '#p-inline').locator('ptx-math math')).toHaveCount(1);
+  await expect(translation(page, '#p-paren').locator('ptx-math math')).toHaveCount(1);
+  // 只有公式的段落也有译文视图，行间公式按 block 显示
+  await expect(translation(page, '#p-display').locator('math[display="block"]')).toHaveCount(1);
+  expect(server.batches.flat().join('\n')).toContain(String.raw`<x0>$\frac{1}{\sqrt{d_k}}$</x0>`);
+
+  const broken = translation(page, '#p-broken').locator('ptx-math');
+  await expect(broken).toHaveText(String.raw`$\frac{a$`);
+  await expect(broken.locator('math')).toHaveCount(0);
+
+  for (const [id, text] of [['#p-price', '$5 and'], ['#p-shell', '$HOME/$USER']] as const) {
+    await expect(translation(page, id)).toContainText(text);
+    await expect(translation(page, id).locator('ptx-math')).toHaveCount(0);
+  }
+  await expect(translation(page, '#p-code').locator('code')).toHaveText('echo $x^2$');
+  await expect(translation(page, '#p-code').locator('ptx-math')).toHaveCount(0);
+
+  // 原文不动；渲染写在译文里，不算页面变化，不触发重翻
+  expect(await page.locator('#p-inline').evaluate((el) => el.firstChild!.textContent)).toContain(String.raw`$\frac{1}`);
+  const batches = server.batches.length;
+  await page.waitForTimeout(1500);
+  expect(server.batches.length).toBe(batches);
+  await page.close();
+});
+
+test('LaTeX：仅译文模式下公式可见，切回双语后仍是渲染结果', async () => {
+  const page = await context.newPage();
+  await page.goto(`${server.url}/tex.html`);
+  await toggle(page);
+  const math = translation(page, '#p-inline').locator('math');
+  await expect(math).toHaveCount(1);
+
+  await setSettings({ displayMode: 'translation' });
+  await expect(page.locator('#p-inline')).toHaveAttribute('data-ptx-hide', '');
+  await expect(math).toBeVisible();
+  expect((await math.boundingBox())!.height).toBeGreaterThan(8);
+
+  await setSettings({ displayMode: 'bilingual' });
+  await expect(math).toBeVisible();
+  await page.close();
+});
+
+test('LaTeX：划词弹窗和侧栏完成后渲染公式，复制得到的是源码', async () => {
+  const page = await context.newPage();
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: server.url });
+  await page.goto(`${server.url}/tex.html`);
+  await page.waitForTimeout(300);
+  await selectText(page, '#p-inline');
+  await page.locator('ptx-ui-selection .trigger').click();
+  const panel = page.locator('ptx-ui-selection .panel');
+  await expect(panel.locator('.result')).toHaveAttribute('data-state', 'done');
+  await expect(panel.locator('.result math')).toHaveCount(1);
+  await panel.locator('.copy').click();
+  await expect(panel.locator('.copy')).toHaveText('已复制');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(String.raw`$\frac{1}{\sqrt{d_k}}$`);
+  await page.close();
+
+  const sidePanel = await context.newPage();
+  await sidePanel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  await sidePanel.evaluate(() => {
+    navigator.clipboard.writeText = async (text) => void ((window as unknown as { copied: string }).copied = text);
+  });
+  await sidePanel.locator('#source').fill('Let $x^2$ be positive.\n\nThen $$\\sum_i x_i$$ holds.');
+  await sidePanel.locator('#translate').click();
+  await expect(sidePanel.locator('#result math')).toHaveCount(2);
+  await sidePanel.locator('#copy').click();
+  await expect(sidePanel.locator('#copy')).toHaveText('已复制');
+  expect(await sidePanel.evaluate(() => (window as unknown as { copied: string }).copied)).toContain('Let $x^2$ be positive.\n\nThen $$\\sum_i x_i$$ holds.');
+  await sidePanel.close();
+});
+
 test('弹窗页面可正常渲染', async () => {
   const page = await context.newPage();
   const errors: string[] = [];

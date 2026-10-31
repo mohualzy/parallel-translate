@@ -27,6 +27,7 @@ export default defineConfig({
       files.push(
         { absoluteSrc: path.resolve('LICENSE'), relativeDest: 'LICENSE' },
         { absoluteSrc: path.join(PDFJS_DIR, 'LICENSE'), relativeDest: 'pdfjs/LICENSE' },
+        { absoluteSrc: path.resolve('node_modules/katex/LICENSE'), relativeDest: 'katex/LICENSE' },
       );
     },
     // e2e 构建（`wxt build --mode e2e`）让 YouTube 脚本额外匹配本地 mock 服务，用仿 YouTube 的测试页验证字幕功能；

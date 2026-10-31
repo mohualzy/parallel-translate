@@ -6,6 +6,7 @@ import type { SelectionEvent } from '@/lib/messages';
 import { PROFILES } from '@/lib/profiles';
 import { getProviders, getSettings, type Settings } from '@/lib/settings';
 import { PENDING_TEXT_KEY } from '@/lib/side-panel';
+import { setTexText } from '@/lib/tex-render';
 import { resolveTextTarget, TEXT_PORT, type TextRequest } from '@/lib/text-translate';
 import { $, fillSelect } from '@/ui/labels';
 
@@ -22,6 +23,8 @@ const resultBox = $('#result-box');
 const result = $('#result');
 const direction = $('#direction');
 const errorEl = $('#error');
+/** 译文原文：公式渲染后 result 的文字里混着 MathML，复制时用这份 */
+let resultText = '';
 
 type Port = ReturnType<typeof browser.runtime.connect>;
 
@@ -84,6 +87,7 @@ function translate(force = true) {
   errorEl.hidden = true;
   resultBox.hidden = false;
   result.textContent = '';
+  resultText = '';
   result.dataset.state = 'loading';
   direction.textContent = `译成 ${getLanguage(targetLang).name}`;
 
@@ -91,10 +95,13 @@ function translate(force = true) {
   port = current;
   current.onMessage.addListener((event: SelectionEvent) => {
     if (port !== current) return;
-    if (event.type === 'delta') result.textContent += event.delta;
-    else if (event.type === 'done') {
+    if (event.type === 'delta') {
+      resultText += event.delta;
+      result.textContent = resultText;
+    } else if (event.type === 'done') {
       // 流式片段可能带着模型照抄的标签，以后台清理过的完整译文为准
-      result.textContent = event.text;
+      resultText = event.text;
+      void setTexText(result, resultText);
       result.dataset.state = 'done';
       current.disconnect();
     } else {
@@ -145,7 +152,7 @@ async function init() {
   $('#copy').addEventListener('click', async (e) => {
     const button = e.currentTarget as HTMLButtonElement;
     try {
-      await navigator.clipboard.writeText(result.textContent ?? '');
+      await navigator.clipboard.writeText(resultText);
       button.textContent = '已复制';
     } catch {
       button.textContent = '复制失败';

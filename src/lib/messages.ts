@@ -34,6 +34,8 @@ export type BackgroundRequest =
   | { type: 'video-brief'; title: string; text: string }
   /** 音乐视频查同步歌词（只发歌手和歌名，见硬性规则 8） */
   | { type: 'lookup-lyrics'; artist: string; track: string; seconds: number; lang: string }
+  /** LaTeX 公式渲染成 MathML：KaTeX 只打包在后台，内容脚本不变大 */
+  | { type: 'render-tex'; items: { tex: string; display: boolean }[] }
   /** 输入框翻译：译成 inputTargetLang */
   | { type: 'translate-input'; text: string }
   | { type: 'test-provider'; provider: ProviderConfig }
@@ -64,6 +66,8 @@ export interface BackgroundResponses {
   'extract-terms': GlossaryEntry[];
   'video-brief': VideoBrief;
   'lookup-lyrics': Lyrics | null;
+  /** 与 items 等长；null 表示语法错误 */
+  'render-tex': (string | null)[];
   'test-provider': { text: string; ms: number };
   'list-models': string[];
   'clear-cache': null;

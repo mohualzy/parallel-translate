@@ -159,6 +159,41 @@ test('真实模型：划词翻译，单词给出词典式释义，句子给出�
   await page.close();
 });
 
+test('真实模型：LaTeX 公式在页面、划词、侧栏里都保留并渲染', async () => {
+  test.setTimeout(180_000);
+  const page = await context.newPage();
+  await page.goto(`${server.url}/tex.html`);
+  await page.waitForTimeout(300);
+
+  const selectedResult = page.locator('ptx-ui-selection .panel .result');
+  await page.locator('#p-inline').click({ clickCount: 3 });
+  await page.locator('ptx-ui-selection .trigger').click();
+  await expect(selectedResult).toHaveAttribute('data-state', 'done', { timeout: 60_000 });
+  console.log('划词译文：', JSON.stringify(await selectedResult.textContent()));
+  await expect(selectedResult.locator('math')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+
+  await toggle(page);
+  const inline = translation(page, '#p-inline');
+  await expect(inline).toHaveText(CJK, { timeout: 60_000 });
+  await expect(inline.locator('math')).toHaveCount(1);
+  await expect(translation(page, '#p-paren').locator('math')).toHaveCount(1, { timeout: 60_000 });
+  await expect(translation(page, '#p-display').locator('math')).toHaveCount(1, { timeout: 60_000 });
+  await expect(page.locator('ptx-t.ptx-error')).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/live-tex-page.png' });
+  await page.close();
+
+  const panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  const result = panel.locator('#result');
+  await panel.locator('#source').fill('The loss is $L = \\sum_i (y_i - \\hat{y}_i)^2$ for each batch.\n\nThe gradient \\(\\nabla L\\) is computed next.');
+  await panel.locator('#translate').click();
+  await expect(result).toHaveAttribute('data-state', 'done', { timeout: 60_000 });
+  console.log('侧栏译文：', JSON.stringify(await result.textContent()));
+  await expect(result.locator('math')).toHaveCount(2);
+  await panel.close();
+});
+
 test('真实模型：带条件的术语按语境判断（Apple 指公司时保留，指水果时照常翻译）', async () => {
   test.setTimeout(120_000);
   await sw.evaluate(async () => {

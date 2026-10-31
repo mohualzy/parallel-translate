@@ -24,6 +24,7 @@ import {
   type LocalPdfState,
 } from '@/lib/pdf/auto-open';
 import { PDF_LINK_PATTERNS, viewerUrl } from '@/lib/pdf/url';
+import { renderTex } from '@/background/tex';
 import { getSettings, onSettingsChanged } from '@/lib/settings';
 import { openSidePanel, PENDING_TEXT_KEY } from '@/lib/side-panel';
 import { TEXT_PORT, type TextRequest } from '@/lib/text-translate';
@@ -70,6 +71,8 @@ async function handle(
       return videoBrief(request.title, request.text);
     case 'lookup-lyrics':
       return lookupLyrics(request.artist, request.track, request.seconds, request.lang);
+    case 'render-tex':
+      return request.items.map((item) => renderTex(item.tex, item.display));
     case 'test-provider':
       return testProvider(request.provider);
     case 'list-models':

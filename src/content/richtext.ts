@@ -1,3 +1,4 @@
+import { appendTexText, splitTex, TEX_TAG, texElement } from '@/lib/tex';
 import type { DomClassifier } from './dom';
 
 /**
@@ -40,13 +41,23 @@ const collapse = (s: string) => s.replace(/\s+/g, ' ');
 export function serialize(nodes: Node[], rich: boolean, classifier: DomClassifier): Serialized {
   const refs: Element[] = [];
   let plain = '';
+  let formulas = '';
 
   const walk = (node: Node): string => {
     const kind = classifier.classify(node);
     if (kind === 'text') {
-      const s = collapse(node.textContent ?? '');
-      plain += s;
-      return escapeText(s);
+      return splitTex(collapse(node.textContent ?? ''))
+        .map((part) => {
+          if (part.tex === undefined || !rich) {
+            plain += part.text;
+            return escapeText(part.text);
+          }
+          // LaTeX 源码：占位给模型，译文里换成扩展自己的公式元素
+          formulas += part.text;
+          const n = refs.push(texElement(part, node.ownerDocument!)) - 1;
+          return `<x${n}>${escapeText(part.text)}</x${n}>`;
+        })
+        .join('');
     }
     if (kind === 'ignore' || kind === 'skip') return '';
     const el = node as Element;
@@ -72,8 +83,11 @@ export function serialize(nodes: Node[], rich: boolean, classifier: DomClassifie
 
   const text = collapse(nodes.map(walk).join('')).trim();
   if (rich && refs.length > MAX_TAGS) return serialize(nodes, false, classifier);
-  return { text, plain: collapse(plain).trim(), refs };
+  // 只有公式的段落也要进翻译流程，否则公式没有机会渲染
+  return { text, plain: collapse(plain).trim() || formulas, refs };
 }
+
+export const hasFormula = (refs: Element[]) => refs.some((ref) => ref.localName === TEX_TAG);
 
 function stripIds(el: Element) {
   el.removeAttribute('id');
@@ -114,7 +128,7 @@ export function deserialize(translated: string, refs: Element[], doc: Document):
   const stack: { node: Node; tag?: string }[] = [{ node: fragment }];
   const top = () => stack[stack.length - 1]!.node;
   const appendText = (s: string) => {
-    if (s) top().appendChild(doc.createTextNode(unescapeText(s)));
+    if (s) appendTexText(top(), unescapeText(s), doc);
   };
 
   let last = 0;

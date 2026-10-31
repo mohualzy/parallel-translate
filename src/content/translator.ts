@@ -6,7 +6,8 @@ import { findSiteRule } from '@/lib/site-rules';
 import { collectRuns, runContainsPoint, type Run } from './collect';
 import { buildExcludeSelector, composedParent, CONTENT_CONTAINERS, DomClassifier, looksLikeUIChrome, OWN_TAG } from './dom';
 import { pageAutoProfile, pageContext, pageProfile } from './page-context';
-import { cloneSources, deserialize, sameText, serialize } from './richtext';
+import { renderTexIn } from '@/lib/tex-render';
+import { cloneSources, deserialize, hasFormula, sameText, serialize } from './richtext';
 import { ensureShadowStyles } from './shadow-styles';
 import { TitleTranslator } from './title';
 import { TRANSLATING_ATTR } from './lifecycle';
@@ -721,7 +722,7 @@ export class PageTranslator {
   private renderDone(p: Paragraph) {
     if (p.translation === undefined) return;
     // 模型原样返回（人名、产品名、代码等本就不需要翻译）：再显示一遍只是重复，不插入译文
-    if (sameText(p.translation, p.source)) {
+    if (this.isUnchanged(p)) {
       this.removeView(p);
       return;
     }
@@ -733,8 +734,14 @@ export class PageTranslator {
     const inner = document.createElement('ptx-i');
     inner.append(deserialize(p.translation, p.refs, document));
     el.replaceChildren(inner);
+    void renderTexIn(inner);
     this.applyHide(p, this.settings.displayMode === 'translation');
     this.scheduleLayoutCheck(p);
+  }
+
+  /** 译文和原文相同；带公式的段落除外，原文是源码，译文要显示渲染结果 */
+  private isUnchanged(p: Paragraph): boolean {
+    return p.translation !== undefined && sameText(p.translation, p.source) && !hasFormula(p.refs);
   }
 
   private reportError(message: string) {
@@ -851,7 +858,7 @@ export class PageTranslator {
 
   private restoreView(p: Paragraph) {
     if (!p.el || p.el.isConnected || p.dismissed || p.state === 'idle' || p.state === 'queued') return;
-    if (p.state === 'done' && p.translation !== undefined && sameText(p.translation, p.source)) return;
+    if (p.state === 'done' && this.isUnchanged(p)) return;
     if (p.restores++ >= MAX_RESTORES) return;
     if (p.state === 'done') this.renderDone(p);
     else if (p.state === 'error') this.renderError(p);
