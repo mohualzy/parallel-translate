@@ -154,7 +154,7 @@ just build
 
 ## 开发
 
-开发约定、目录结构和命令见 [AGENTS.md](AGENTS.md)；路线图见 [docs/PLANS.md](docs/PLANS.md)；技术决策见 [docs/DECISIONS.md](docs/DECISIONS.md)。
+路线图见 [docs/PLANS.md](docs/PLANS.md)；技术决策见 [docs/DECISIONS.md](docs/DECISIONS.md)。
 
 | 命令 | 作用 |
 |---|---|

@@ -16,7 +16,7 @@ import { $, fillSelect } from '@/ui/labels';
 
 /**
  * PDF 双语阅读器页面：?file=<地址> 打开远程或本地 PDF；没有参数时可拖放或选择本地文件。
- * 文件只在本机解析（AGENTS.md 硬性规则 7）。
+ * 文件只在本机解析。
  */
 
 const pages = $('#pages');

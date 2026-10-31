@@ -40,7 +40,7 @@ export default defineConfig({
       }
     },
   },
-  // 关闭 auto-imports：所有依赖显式 import，便于阅读（见 AGENTS.md 规则 3）
+  // 关闭 auto-imports：所有依赖显式 import，便于阅读
   imports: false,
   manifest: {
     name: '双语对照翻译',

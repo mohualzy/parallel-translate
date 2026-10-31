@@ -13,7 +13,7 @@ const getURL = browser.runtime.getURL as (path: string) => string;
 const asset = (dir: string) => getURL(`/pdfjs/${dir}/`);
 
 /**
- * 在本机打开 PDF（AGENTS.md 硬性规则 7：文件不上传）。
+ * 在本机打开 PDF，文件不上传。
  * fontExtraProperties：保留原字体名（CMMI10 等），用来识别公式和代码字体。
  */
 export function openPdf(data: ArrayBuffer): Promise<PdfDocument> {
