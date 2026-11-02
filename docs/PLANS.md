@@ -76,7 +76,8 @@
 - [x] 丢弃自动字幕里听错的外文碎片（D72）— 已实现
 - [x] 只有自动字幕的音乐视频用 LRCLIB 同步歌词当原文（D73）— 已实现，E2E 与真实歌曲实测通过：[计划](plans/2026-10-30-video-lyrics.md)
 - [x] LaTeX 源码渲染成公式：网页、划词、侧栏（D76）— 已实现，E2E 与真实模型实测通过：[设计](specs/2026-10-31-latex-rendering-design.md) · [计划](plans/2026-10-31-latex-rendering.md)
-- [ ] 上架 Chrome Web Store 和 Edge Add-ons — 材料已备齐，待提交审核：[上架材料](store/listing.md)
+- [x] 内置 Google 翻译，免配置可用（D77）— 已实现，真实接口实测通过：[设计](specs/2026-11-02-google-translate-design.md) · [计划](plans/2026-11-02-google-translate.md)
+- [ ] 上架 Chrome Web Store 和 Edge Add-ons — 搁置，先本地使用。[上架材料](store/listing.md)写于加入 Google 翻译之前，恢复时要补上它的说明和数据声明
 - [x] 输入框翻译：Alt+I / 连按三次空格；过滤输入法组合输入；可撤销写回 — 已实现，E2E、真实模型与 ProseMirror / Lexical 实测通过：[设计](specs/2026-10-23-input-translate-design.md) · [计划](plans/2026-10-23-input-translate.md)
 - [x] AI 助手 / prompt 档案：技术、论文、新闻、GitHub 等预设风格，可按站点自动选择— 已实现：六种风格、按网站 / 论文元数据自动选择、弹窗按网站指定；E2E 与真实模型通过：[设计](specs/2026-10-23-prompt-profiles-design.md) · [计划](plans/2026-10-23-prompt-profiles.md)
 - [x] AI 抽取文章术语，保证长文前后译法一致（最多 12 条候选）— 已实现：并行抽取不阻塞首屏、冲突段落带术语重翻、弹窗查看；E2E 与真实模型通过：[设计](specs/2026-10-23-article-terms-design.md) · [计划](plans/2026-10-23-article-terms.md)

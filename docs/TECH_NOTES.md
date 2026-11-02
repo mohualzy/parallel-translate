@@ -151,6 +151,16 @@
 - WXT 的 `sidepanel` 入口会自动生成 Chrome 的 `side_panel.default_path`、`sidePanel` 权限，以及 Firefox 的 `sidebar_action`。
 - E2E 无法用 Playwright 打开真正的侧栏（需要用户手势），用标签页直接打开 `sidepanel.html` 测试页面逻辑。
 
+## Google 翻译接口
+
+- `translate_a/t?client=gtx` 是非官方接口：同一请求带多个 `q` 就是批量；`format=html` 保留 `<g1>`、`<x1/>`，但压平换行、把 `'` 写成 `&#39;`；`format=text` 保留换行。
+- `<x1>…</x1>` 的内容也会被翻译。网页端 `deserialize` 按编号还原原元素，不受影响。
+- 国内直连超时，浏览器要走代理。Git Bash 的 curl 传中文参数会乱码，测试接口时用英文原文。
+
+## 内容脚本的安全上下文
+
+- `crypto.randomUUID` 只在安全上下文里有，内容脚本跟随页面，http 页面上是 `undefined`。`src/lib/settings.ts` 会被内容脚本导入，模块顶层不能调用它，否则所有 http 页面的内容脚本启动就崩。
+
 ## PDF（pdf.js 6.4）
 
 - `page.commonObjs.get(fontName).name` 只有在 `getDocument({ fontExtraProperties: true })` 时才有值（原字体名如 `ABCDEF+CMMI10`），默认为了省内存不保留。
