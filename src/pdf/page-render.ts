@@ -13,7 +13,7 @@ export interface Glyph {
   y: number;
   fill: string;
   font: string;
-  /** pdf.js 载入的字体 id（ctx.font 里的字体名），与文本项的 fontId 对应 */
+  /** ctx.font 里排第一的字体族，与文本项的 fontId 对应 */
   fontId: string;
   /** 设备像素下的宽度 */
   w: number;
@@ -71,12 +71,14 @@ export async function renderPage(page: PdfPage, viewport: pdfjs.PageViewport, in
 }
 
 /** pdf.js 已加载的字体对象（需 fontExtraProperties: true 才有 name） */
-function fontInfo(page: PdfPage, fontName: string): { name: string; isType3Font: boolean } {
+function fontInfo(page: PdfPage, fontName: string): { name: string; isType3Font: boolean; canvasFamily: string } {
   try {
-    const font = page.commonObjs.get(fontName) as { name?: string; isType3Font?: boolean };
-    return { name: font.name ?? '', isType3Font: font.isType3Font === true };
+    const font = page.commonObjs.get(fontName) as { name?: string; isType3Font?: boolean; systemFontInfo?: { css?: string } };
+    // 没内嵌的字体用系统字体画，ctx.font 里排第一的是它的 css 字体族，不是 fontName
+    const systemFamily = /^"([^"]+)"/.exec(font.systemFontInfo?.css ?? '')?.[1];
+    return { name: font.name ?? '', isType3Font: font.isType3Font === true, canvasFamily: systemFamily ?? fontName };
   } catch {
-    return { name: '', isType3Font: false };
+    return { name: '', isType3Font: false, canvasFamily: fontName };
   }
 }
 
@@ -104,7 +106,7 @@ export async function extractText(page: PdfPage, viewport: pdfjs.PageViewport): 
       w: it.width * viewport.scale,
       size,
       font: font.name,
-      fontId: it.fontName,
+      fontId: font.canvasFamily,
       rotated: Math.abs(t[1]) > 0.01 * size || Math.abs(t[2]) > 0.01 * size,
       mono: MONO_FONT.test(font.name) || content.styles[it.fontName]?.fontFamily === 'monospace',
     });

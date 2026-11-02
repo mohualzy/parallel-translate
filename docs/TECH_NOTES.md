@@ -156,6 +156,7 @@
 - `page.commonObjs.get(fontName).name` 只有在 `getDocument({ fontExtraProperties: true })` 时才有值（原字体名如 `ABCDEF+CMMI10`），默认为了省内存不保留。
 - pdf.js 6 已移除 `isEvalSupported` 选项（不再用 eval）。图片解码（JPEG 2000 / JBIG2）和色彩管理用 wasm，扩展页面的 CSP 需要 `'wasm-unsafe-eval'`，否则解码失败。
 - 去字形：给渲染用的 2D 上下文实例覆盖 `fillText` / `strokeText`（实例属性优先于原型），渲染完 `delete` 掉恢复原型方法。pdf.js 默认用 FontFace + `fillText` 画字；Type3 字体用路径画，去不掉，可从 `commonObjs` 的 `isType3Font` 识别。
+- 没内嵌的字体（含标准 14 字体）走系统字体：`ctx.font` 里排第一的是 `systemFontInfo.css` 的字体族（如 `Helvetica`），不是文本项的 `fontName`（`g_d0_f1`）。字形和文本项按字体配对时要用同一个名字，否则字形没人认领，会原样画回译文页、和译文重叠。这条路径下打包的 `standard_fonts` 只用于 Symbol 和 ZapfDingbats。
 - 版面分析的坑：
   - 宽下标（d_model）会把一行断成两截；挂靠后要再合并一次同基线片段，两个方向都比较，因为基线差零点几像素时右边的片段可能排在前面。
   - 根号等公式符号的基线不在本行，常夹在两行之间；判断挂靠到哪一行时，要排除和它水平重叠的正文行，再取垂直距离最近的。

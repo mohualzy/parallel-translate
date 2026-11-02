@@ -1517,6 +1517,30 @@ test('PDF 阅读器：渲染原文页与译文页；正文按段翻译（跨行�
   await page.close();
 });
 
+test('PDF 阅读器：没内嵌的字体，译文页上的原字形也被去掉', async () => {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/pdf.html?file=${encodeURIComponent(`${server.url}/sample.pdf`)}`);
+  const first = page.locator('.page[data-page="1"]');
+  await expect(first).toHaveAttribute('data-translated', /[1-9]/);
+  // sample.pdf 全是标准 14 字体。标题译文加了前缀后折行，原标题最右端在译文页上应该是空白
+  const ink = await first.evaluate((el) => {
+    const [original, translated] = [...el.querySelectorAll('canvas')].map((c) => c.getContext('2d')!.getImageData(0, 0, c.width, c.height));
+    const dark = (img: ImageData, x: number, y: number) => img.data[(y * img.width + x) * 4]! < 128;
+    const { width, height } = original!;
+    let top = 0;
+    while (top < height && !Array.from({ length: width }, (_, x) => dark(original!, x, top)).some(Boolean)) top++;
+    let bottom = top;
+    while (bottom < height && Array.from({ length: width }, (_, x) => dark(original!, x, bottom)).some(Boolean)) bottom++;
+    const columns = Array.from({ length: width }, (_, x) => x).filter((x) => Array.from({ length: bottom - top }, (_, i) => dark(original!, x, top + i)).some(Boolean));
+    const [left, right] = [columns[0]!, columns.at(-1)!];
+    let count = 0;
+    for (let y = top; y < bottom; y++) for (let x = right - Math.round((right - left) * 0.1); x <= right; x++) if (dark(translated!, x, y)) count++;
+    return count;
+  });
+  expect(ink).toBe(0);
+  await page.close();
+});
+
 test('PDF 阅读器：切换译文中文字体只重画、不重新请求翻译；手动输入的字体名保存到设置，刷新后仍选中；已授权时列出本机中文字体', async () => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/pdf.html?file=${encodeURIComponent(`${server.url}/sample.pdf`)}`);
