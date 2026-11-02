@@ -4,7 +4,9 @@ import {
   createProvider,
   DEFAULT_SETTINGS,
   getActiveProvider,
+  getProviders,
   getSettings,
+  GOOGLE_PROVIDER_ID,
   matchSite,
   PROVIDER_PRESETS,
   saveProviders,
@@ -30,6 +32,19 @@ describe('settings storage', () => {
     expect((await getActiveProvider())?.name).toBe('B');
     await saveSettings({ activeProviderId: 'missing' });
     expect((await getActiveProvider())?.name).toBe('A');
+  });
+
+  it('内置 Google 翻译：没有模型时生效，有模型时排在后面，可以手动选中，不写入存储', async () => {
+    expect((await getActiveProvider()).id).toBe(GOOGLE_PROVIDER_ID);
+
+    const a = { ...createProvider(), name: 'A' };
+    await saveProviders([...(await getProviders()), a]);
+    expect((await getProviders()).map((p) => p.name)).toEqual(['A', 'Google 翻译']);
+    expect((await getActiveProvider()).name).toBe('A');
+    expect(((await fakeBrowser.storage.local.get('providers')).providers as unknown[]).length).toBe(1);
+
+    await saveSettings({ activeProviderId: GOOGLE_PROVIDER_ID });
+    expect((await getActiveProvider()).id).toBe(GOOGLE_PROVIDER_ID);
   });
 });
 

@@ -137,7 +137,6 @@ async function init() {
     providers.map((p) => [p.id, p.model ? `${p.name} · ${p.model}` : p.name]),
     activeId,
   );
-  if (providers.length === 0) showError('还没有配置翻译服务：请在扩展设置页添加一个模型 API');
   fillSelect(profileSelect, PROFILES.map((p): [string, string] => [p.id, p.name]), 'general');
   fillSelect(targetSelect, [['auto', '自动'], ...LANGUAGES.map((l): [string, string] => [l.code, l.name])], 'auto');
   renderAutoLabel();

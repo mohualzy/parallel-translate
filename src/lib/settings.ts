@@ -5,7 +5,7 @@ export type TranslationStyle = 'none' | 'dashed' | 'underline' | 'highlight' | '
 export type HoverKey = 'Control' | 'Alt' | 'Shift' | 'off';
 /** 划词翻译：icon 选区旁出现按钮，点了再翻；direct 选中即翻；off 关闭 */
 export type SelectionMode = 'icon' | 'direct' | 'off';
-export type ProviderType = 'openai';
+export type ProviderType = 'openai' | 'google';
 
 /** 通用偏好：内容脚本可读（不含任何密钥） */
 export interface Settings {
@@ -161,6 +161,24 @@ export function createProvider(preset?: ProviderPreset): ProviderConfig {
   };
 }
 
+export const GOOGLE_PROVIDER_ID = 'google';
+
+/** 内置的免费 Google 翻译：不落盘、不能删除，用户配了模型后排在模型之后 */
+const GOOGLE_PROVIDER: ProviderConfig = {
+  id: GOOGLE_PROVIDER_ID,
+  name: 'Google 翻译',
+  type: 'google',
+  baseURL: 'https://translate.googleapis.com',
+  apiKey: '',
+  model: '免费',
+  temperature: 0,
+  maxConcurrent: 3,
+  timeoutMs: 15_000,
+  stream: false,
+  prompt: '',
+  extraBody: '',
+};
+
 const SETTINGS_KEY = 'settings';
 const PROVIDERS_KEY = 'providers';
 
@@ -187,17 +205,17 @@ export function onSettingsChanged(cb: (settings: Settings) => void): () => void 
 export async function getProviders(): Promise<ProviderConfig[]> {
   const stored = (await browser.storage.local.get(PROVIDERS_KEY))[PROVIDERS_KEY] as ProviderConfig[] | undefined;
   // 与默认值合并，兼容旧版本缺字段的配置
-  return (stored ?? []).map((p) => ({ ...createProvider(), ...p }));
+  return [...(stored ?? []).map((p) => ({ ...createProvider(), ...p })), GOOGLE_PROVIDER];
 }
 
 export async function saveProviders(providers: ProviderConfig[]): Promise<void> {
-  await browser.storage.local.set({ [PROVIDERS_KEY]: providers });
+  await browser.storage.local.set({ [PROVIDERS_KEY]: providers.filter((p) => p.id !== GOOGLE_PROVIDER_ID) });
 }
 
-/** 当前生效的服务：优先 activeProviderId，找不到时退回第一个 */
-export async function getActiveProvider(): Promise<ProviderConfig | undefined> {
+/** 当前生效的服务：优先 activeProviderId，找不到时退回第一个（至少有内置的 Google 翻译） */
+export async function getActiveProvider(): Promise<ProviderConfig> {
   const [settings, providers] = await Promise.all([getSettings(), getProviders()]);
-  return providers.find((p) => p.id === settings.activeProviderId) ?? providers[0];
+  return providers.find((p) => p.id === settings.activeProviderId) ?? providers[0]!;
 }
 
 /** 站点规则匹配：`example.com` 同时匹配 example.com 与 *.example.com */

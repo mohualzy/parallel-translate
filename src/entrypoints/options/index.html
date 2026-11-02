@@ -22,7 +22,7 @@
           <header class="card-head">
             <div>
               <h2>翻译服务</h2>
-              <p class="muted">支持所有 OpenAI 兼容接口。API Key 只保存在本机浏览器，不会同步或上传到除该服务以外的任何地方。</p>
+              <p class="muted">内置免费的 Google 翻译，装好即用。想要术语表、翻译风格和更好的译文，添加任意 OpenAI 兼容的模型服务。API Key 只保存在本机浏览器，不会同步或上传到除该服务以外的任何地方。</p>
             </div>
           </header>
 
@@ -34,10 +34,11 @@
             </div>
           </div>
 
-          <p id="no-provider" class="empty muted" hidden>还没有翻译服务。选择一个预设并点击「添加」，填入 API Key 和模型名即可。</p>
-
           <form id="provider-form" class="form" hidden autocomplete="off">
-            <div class="grid-2">
+            <p class="builtin-note muted">
+              免费，不用 API Key。待翻译的文字会发给 Google；国内网络需要代理。翻译风格、术语表、长文术语抽取和视频预读依赖模型，用它时不生效。
+            </p>
+            <div class="grid-2 model-only">
               <label class="field">
                 <span>名称</span>
                 <input type="text" name="name" required />
@@ -47,14 +48,14 @@
                 <input type="url" name="baseURL" placeholder="https://api.example.com/v1" required />
               </label>
             </div>
-            <label class="field">
+            <label class="field model-only">
               <span>API Key</span>
               <div class="input-group">
                 <input type="password" name="apiKey" placeholder="sk-…（本地 Ollama 可留空）" spellcheck="false" />
                 <button type="button" id="toggle-key" class="btn">显示</button>
               </div>
             </label>
-            <label class="field">
+            <label class="field model-only">
               <span>模型</span>
               <div class="input-group">
                 <input type="text" name="model" list="model-list" required spellcheck="false" />
@@ -64,7 +65,7 @@
               <small id="models-status" class="muted"></small>
             </label>
 
-            <details class="advanced">
+            <details class="advanced model-only">
               <summary>高级选项</summary>
               <div class="grid-3">
                 <label class="field">
@@ -96,11 +97,11 @@
             </details>
 
             <div class="actions">
-              <button type="submit" class="btn btn-primary">保存</button>
+              <button type="submit" class="btn btn-primary model-only">保存</button>
               <button type="button" id="test-provider" class="btn">测试连接</button>
               <button type="button" id="activate-provider" class="btn">设为当前使用</button>
               <span class="spacer"></span>
-              <button type="button" id="delete-provider" class="btn btn-danger">删除</button>
+              <button type="button" id="delete-provider" class="btn btn-danger model-only">删除</button>
             </div>
             <div id="test-result" class="test-result" hidden></div>
           </form>

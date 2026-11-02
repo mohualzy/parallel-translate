@@ -9,6 +9,7 @@ import {
   DEFAULT_SETTINGS,
   getProviders,
   getSettings,
+  GOOGLE_PROVIDER_ID,
   PROVIDER_PRESETS,
   saveProviders,
   saveSettings,
@@ -61,11 +62,11 @@ function renderProviderList() {
       return chip;
     }),
   );
-  $('#no-provider').hidden = providers.length > 0;
   form.hidden = !providers.some((p) => p.id === selectedId);
 }
 
 function fillForm(p: ProviderConfig) {
+  form.classList.toggle('builtin', p.id === GOOGLE_PROVIDER_ID);
   field('name').value = p.name;
   field('baseURL').value = p.baseURL;
   field('apiKey').value = p.apiKey;
@@ -117,6 +118,8 @@ function selectProvider(id: string) {
 
 async function persistProviders() {
   await saveProviders(providers);
+  // 重新读取：内置服务总排在用户的模型之后
+  providers = await getProviders();
   // 第一个服务自动设为当前
   if (!providers.some((p) => p.id === settings.activeProviderId) && providers[0]) {
     settings = await saveSettings({ activeProviderId: providers[0].id });
@@ -323,7 +326,7 @@ function initData() {
       app: 'parallel-translate',
       version: 1,
       settings,
-      providers: providers.map((p) => (withKeys ? p : { ...p, apiKey: '' })),
+      providers: providers.filter((p) => p.id !== GOOGLE_PROVIDER_ID).map((p) => (withKeys ? p : { ...p, apiKey: '' })),
     };
     download(`parallel-translate-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(data, null, 2));
   });

@@ -1954,13 +1954,28 @@ test('PDF 阅读器：弹窗在 PDF 页面上显示「用双语阅读器打开�
   await page.close();
 });
 
+test('设置页：内置 Google 翻译只显示说明，不显示模型字段，也不能删除', async () => {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/options.html`);
+  await expect(page.locator('.builtin-note')).toBeHidden();
+  await page.locator('.chip', { hasText: 'Google 翻译' }).click();
+  await expect(page.locator('.builtin-note')).toBeVisible();
+  await expect(page.locator('[name="apiKey"]')).toBeHidden();
+  await expect(page.locator('[name="model"]')).toBeHidden();
+  await expect(page.locator('#delete-provider')).toBeHidden();
+  await expect(page.locator('#test-provider')).toBeVisible();
+  await page.locator('.chip', { hasText: 'Mock' }).click();
+  await expect(page.locator('[name="apiKey"]')).toBeVisible();
+  await page.close();
+});
+
 test('设置页：显示已配置服务，测试连接与获取模型列表可用', async () => {
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`chrome-extension://${extensionId}/options.html`);
 
-  await expect(page.locator('.chip')).toHaveText('Mock');
+  await expect(page.locator('.chip')).toHaveText(['Mock', 'Google 翻译']);
   await expect(page.locator('[name="model"]')).toHaveValue('mock-model');
 
   await page.locator('#test-provider').click();
@@ -2053,7 +2068,7 @@ test('弹窗页面可正常渲染', async () => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`chrome-extension://${extensionId}/popup.html`);
-  await expect(page.locator('#provider option')).toHaveText('Mock · mock-model');
+  await expect(page.locator('#provider option')).toHaveText(['Mock · mock-model', 'Google 翻译 · 免费']);
   await expect(page.locator('#target-lang')).toHaveValue('zh-CN');
   // 在标签页中打开时「当前标签页」就是弹窗自己，属于不可翻译页面
   await expect(page.locator('#toggle')).toHaveText('此页面无法翻译');

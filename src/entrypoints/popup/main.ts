@@ -13,7 +13,6 @@ const retryBtn = $<HTMLButtonElement>('#retry');
 const profileSelect = $<HTMLSelectElement>('#profile');
 const termsBox = $<HTMLDetailsElement>('#terms');
 const statusEl = $('#status');
-const noticeEl = $('#notice');
 
 let tabId: number | undefined;
 let windowId: number | undefined;
@@ -91,12 +90,6 @@ async function init() {
   let settings = await getSettings();
   const providers = await getProviders();
 
-  if (providers.length === 0) {
-    noticeEl.hidden = false;
-    noticeEl.innerHTML = '还没有配置翻译服务。<a id="go-setup">去设置 →</a>';
-    $('#go-setup').addEventListener('click', () => browser.runtime.openOptionsPage());
-  }
-
   fillSelect($<HTMLSelectElement>('#target-lang'), languageOptions(), settings.targetLang);
   fillSelect($<HTMLSelectElement>('#style'), styleOptions(), settings.translationStyle);
   fillSelect(profileSelect, [['auto', '自动'], ...PROFILES.map((p): [string, string] => [p.id, p.name])], settings.siteProfiles[host] ?? 'auto');
@@ -106,7 +99,6 @@ async function init() {
     providers.map((p) => [p.id, p.model ? `${p.name} · ${p.model}` : p.name]),
     activeId,
   );
-  $<HTMLSelectElement>('#provider').disabled = providers.length === 0;
   renderDisplayMode(settings.displayMode);
 
   for (const el of document.querySelectorAll('.host')) el.textContent = host || '（无）';

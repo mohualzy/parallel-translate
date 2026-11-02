@@ -71,6 +71,19 @@ main {
   gap: 14px;
 }
 
+.builtin-note {
+  display: none;
+  margin: 0;
+}
+
+.form.builtin .builtin-note {
+  display: block;
+}
+
+.form.builtin .model-only {
+  display: none;
+}
+
 .field {
   display: flex;
   flex-direction: column;

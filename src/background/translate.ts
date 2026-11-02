@@ -3,7 +3,16 @@ import { Semaphore, withRetry } from '@/lib/async';
 import { translateBatch } from '@/lib/batch';
 import { matchGlossary, mergeGlossary, parseGlossary, type GlossaryEntry } from '@/lib/glossary';
 import type { PageContext, SelectionRequest, TranslateResult } from '@/lib/messages';
-import { buildMessages, createClient, HttpError, parseSegments, PROMPT_VERSION, type ChatMessage } from '@/lib/providers';
+import {
+  buildMessages,
+  createClient,
+  HttpError,
+  parseSegments,
+  PROMPT_VERSION,
+  type ChatMessage,
+  type MachineClient,
+  type TranslationClient,
+} from '@/lib/providers';
 import {
   buildInputMessages,
   buildSelectionMessages,
@@ -20,6 +29,7 @@ import {
   TEXT_PROMPT_VERSION,
   SELECTION_PROMPT_VERSION,
   stripReasoning,
+  type PromptOptions,
 } from '@/lib/providers/prompt';
 import { getActiveProvider, getProviders, getSettings, type ProviderConfig, type Settings } from '@/lib/settings';
 import type { TextRequest } from '@/lib/text-translate';
@@ -64,16 +74,44 @@ export function describeError(err: unknown, provider?: ProviderConfig): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-async function complete(provider: ProviderConfig, messages: ChatMessage[]): Promise<string> {
-  const client = createClient(provider);
+const isMachine = (client: TranslationClient): client is MachineClient => 'translate' in client;
+
+/** 排队、超时、重试：批量翻译和术语抽取这类不急的请求 */
+function queued<T>(provider: ProviderConfig, task: (signal: AbortSignal) => Promise<T>): Promise<T> {
   return keepAlive(() =>
     semaphoreFor(provider).run(() =>
-      withRetry(() => client.complete(messages, AbortSignal.timeout(provider.timeoutMs)), {
+      withRetry(() => task(AbortSignal.timeout(provider.timeoutMs)), {
         retries: 2,
         baseDelayMs: 1000,
       }),
     ),
   );
+}
+
+/** 一批片段的译文：模型走 prompt，机器翻译直接翻原文 */
+async function translateChunk(provider: ProviderConfig, batch: string[], prompt: PromptOptions): Promise<(string | null)[]> {
+  const client = createClient(provider);
+  if (isMachine(client)) {
+    return queued(provider, (signal) => client.translate(batch, { targetLang: prompt.targetLang, markup: true }, signal));
+  }
+  return parseSegments(await queued(provider, (signal) => client.complete(buildMessages(batch, prompt), signal)), batch.length);
+}
+
+interface TextJob {
+  text: string;
+  targetLang: string;
+  messages: ChatMessage[];
+}
+
+/** 单段文本，用户在等结果：不排队、不重试（流到一半重试会重复输出） */
+function translateOnce(provider: ProviderConfig, job: TextJob, signal: AbortSignal, onDelta?: (delta: string) => void): Promise<string> {
+  const client = createClient(provider);
+  return keepAlive(async () => {
+    if (!isMachine(client)) return client.complete(job.messages, signal, onDelta);
+    const [text] = await client.translate([job.text], { targetLang: job.targetLang, markup: false }, signal);
+    if (text) onDelta?.(text);
+    return text ?? '';
+  });
 }
 
 /** 缓存键包含该段命中的术语：改了术语表的译法，旧缓存自然失效 */
@@ -103,7 +141,6 @@ function cacheKey(
 
 async function requireProvider(): Promise<ProviderConfig> {
   const provider = await getActiveProvider();
-  if (!provider) throw new Error('还没有配置翻译服务：请在扩展设置页添加一个模型 API');
   if (!provider.model) throw new Error(`翻译服务「${provider.name}」还没填写模型名`);
   return provider;
 }
@@ -137,11 +174,7 @@ export async function translateSegments(segments: string[], page: PageContext): 
   const outcome = await translateBatch(
     missing.map((i) => segments[i]!),
     // 术语按实际发送的这一批匹配（补翻拆分后的小批次也只带自己用到的术语）
-    async (batch) =>
-      parseSegments(
-        await complete(provider, buildMessages(batch, { ...prompt, glossary: matchGlossary(glossary, batch) })),
-        batch.length,
-      ),
+    (batch) => translateChunk(provider, batch, { ...prompt, glossary: matchGlossary(glossary, batch) }),
     { maxRecoveryRequests: MAX_RECOVERY_REQUESTS, describeError: (err) => describeError(err, provider) },
   );
   missing.forEach((i, j) => (translations[i] = outcome.translations[j] ?? null));
@@ -187,9 +220,8 @@ export async function translateText(req: TextRequest, onDelta: (delta: string) =
     glossary,
   });
   try {
-    const raw = await keepAlive(() =>
-      createClient(provider).complete(messages, AbortSignal.any([signal, AbortSignal.timeout(provider.timeoutMs)]), onDelta),
-    );
+    const job = { text: req.text, targetLang: req.targetLang, messages };
+    const raw = await translateOnce(provider, job, AbortSignal.any([signal, AbortSignal.timeout(provider.timeoutMs)]), onDelta);
     const text = cleanInputOutput(raw);
     if (!text) throw new Error('模型返回了空内容');
     await cache.setMany([[key, text]]).catch(() => undefined);
@@ -235,9 +267,8 @@ export async function translateSelection(
     glossary,
   });
   try {
-    const raw = await keepAlive(() =>
-      createClient(provider).complete(messages, AbortSignal.any([signal, AbortSignal.timeout(provider.timeoutMs)]), onDelta),
-    );
+    const job = { text: req.text, targetLang: settings.targetLang, messages };
+    const raw = await translateOnce(provider, job, AbortSignal.any([signal, AbortSignal.timeout(provider.timeoutMs)]), onDelta);
     const text = stripReasoning(raw).trim();
     if (!text) throw new Error('模型返回了空内容');
     await cache.setMany([[key, text]]).catch(() => undefined);
@@ -253,6 +284,8 @@ export async function translateSelection(
  */
 export async function extractTerms(text: string): Promise<GlossaryEntry[]> {
   const [settings, provider] = await Promise.all([getSettings(), requireProvider()]);
+  const client = createClient(provider);
+  if (isMachine(client)) return [];
   const known = parseGlossary(settings.glossary);
   const key = await cache.sha256(
     JSON.stringify(['terms', provider.baseURL, provider.model, settings.targetLang, TERMS_PROMPT_VERSION, settings.glossary, text]),
@@ -260,7 +293,8 @@ export async function extractTerms(text: string): Promise<GlossaryEntry[]> {
   const hit = (await cache.getMany([key])).get(key);
   if (hit !== undefined) return JSON.parse(hit) as GlossaryEntry[];
   try {
-    const terms = parseTerms(await complete(provider, buildTermsMessages(text, settings.targetLang, known)), text);
+    const messages = buildTermsMessages(text, settings.targetLang, known);
+    const terms = parseTerms(await queued(provider, (signal) => client.complete(messages, signal)), text);
     await cache.setMany([[key, JSON.stringify(terms)]]).catch(() => undefined);
     return terms;
   } catch (err) {
@@ -271,6 +305,8 @@ export async function extractTerms(text: string): Promise<GlossaryEntry[]> {
 /** 视频全片预读（设计文档第 3 点）：一次请求，结果按字幕内容缓存，同一视频只付一次 */
 export async function videoBrief(title: string, text: string): Promise<VideoBrief> {
   const [settings, provider] = await Promise.all([getSettings(), requireProvider()]);
+  const client = createClient(provider);
+  if (isMachine(client)) return { summary: '', terms: [] };
   const key = await cache.sha256(
     JSON.stringify(['video-brief', provider.baseURL, provider.model, settings.targetLang, VIDEO_BRIEF_PROMPT_VERSION, settings.glossary, title, text]),
   );
@@ -278,7 +314,7 @@ export async function videoBrief(title: string, text: string): Promise<VideoBrie
   if (hit !== undefined) return JSON.parse(hit) as VideoBrief;
   try {
     const messages = buildVideoBriefMessages(text, title, settings.targetLang, parseGlossary(settings.glossary));
-    const brief = parseVideoBrief(await complete(provider, messages), text);
+    const brief = parseVideoBrief(await queued(provider, (signal) => client.complete(messages, signal)), text);
     await cache.setMany([[key, JSON.stringify(brief)]]).catch(() => undefined);
     return brief;
   } catch (err) {
@@ -295,9 +331,8 @@ export async function translateInput(text: string): Promise<string> {
   const hit = (await cache.getMany([key])).get(key);
   if (hit !== undefined) return hit;
   try {
-    const raw = await keepAlive(() =>
-      createClient(provider).complete(buildInputMessages(text, settings.inputTargetLang), AbortSignal.timeout(provider.timeoutMs)),
-    );
+    const job = { text, targetLang: settings.inputTargetLang, messages: buildInputMessages(text, settings.inputTargetLang) };
+    const raw = await translateOnce(provider, job, AbortSignal.timeout(provider.timeoutMs));
     const translated = cleanInputOutput(raw);
     if (!translated) throw new Error('模型返回了空内容');
     await cache.setMany([[key, translated]]).catch(() => undefined);
@@ -311,11 +346,10 @@ export async function testProvider(provider: ProviderConfig): Promise<{ text: st
   const settings = await getSettings();
   const start = performance.now();
   try {
-    const messages = buildMessages(['Hello! This is a connection test from the translation extension.'], {
+    const [text] = await translateChunk(provider, ['Hello! This is a connection test from the translation extension.'], {
       targetLang: settings.targetLang,
       stylePrompt: provider.prompt,
     });
-    const text = parseSegments(await complete(provider, messages), 1)[0];
     if (!text) throw new Error('模型返回了空内容');
     return { text, ms: Math.round(performance.now() - start) };
   } catch (err) {
@@ -325,7 +359,8 @@ export async function testProvider(provider: ProviderConfig): Promise<{ text: st
 
 export async function listModels(provider: ProviderConfig): Promise<string[]> {
   try {
-    return await createClient(provider).listModels(AbortSignal.timeout(15_000));
+    const client = createClient(provider);
+    return isMachine(client) ? [] : await client.listModels(AbortSignal.timeout(15_000));
   } catch (err) {
     throw new Error(describeError(err, provider));
   }
