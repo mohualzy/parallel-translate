@@ -97,7 +97,7 @@
 
 ## 安装
 
-需要 Node.js 24、[pnpm](https://pnpm.io) 和 [just](https://github.com/casey/just)。克隆仓库后，在目录里执行：
+需要 [Node.js 24](https://nodejs.org/en)、[pnpm](https://pnpm.io) 和 [just](https://github.com/casey/just)。克隆仓库后，在目录里执行：
 
 ```bash
 pnpm install
